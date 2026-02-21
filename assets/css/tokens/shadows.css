@@ -1,0 +1,6 @@
+:root {
+  --shadow-1: 0 1px 2px var(--color-shadow);
+  --shadow-2: 0 4px 12px var(--color-shadow);
+  --shadow-3: 0 12px 30px var(--color-shadow);
+  --shadow-inset: inset 0 1px 2px var(--color-shadow);
+}

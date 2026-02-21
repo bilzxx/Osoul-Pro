@@ -1,0 +1,34 @@
+/* Base document defaults */
+html {
+  min-height: 100%;
+  height: 100%;
+  background-color: var(--color-bg);
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
+section,
+div,
+header,
+main {
+  max-width: 100%;
+}
+
+i.fas,
+i.fab,
+i.far {
+  margin-left: 2px;
+  vertical-align: middle;
+}
+
+.repurchase-row-hidden {
+  display: none;
+}

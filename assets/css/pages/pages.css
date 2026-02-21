@@ -1,0 +1,181 @@
+@import url("https://fonts.googleapis.com/css2?family=Exo+2:wght@400;500;600;700&family=Orbitron:wght@500;600;700&display=swap");
+
+/* Phase 1 UI refresh (project-specific visual polish) */
+:root {
+  --ui-surface-border: var(--color-val-rgba-59-130-246-0-2);
+  --ui-surface-shadow: var(--color-val-rgba-0-0-0-0-25);
+  --ui-surface-glow: var(--color-val-rgba-59-130-246-0-15);
+  --ui-gold-soft: var(--color-val-rgba-251-191-36-0-1);
+}
+
+body {
+  font-family: "Exo 2", var(--font-family-base);
+  line-height: var(--line-height-base);
+  background-image:
+    radial-gradient(circle at 8% 2%, var(--color-val-rgba-59-130-246-0-15) 0, transparent 38%),
+    radial-gradient(circle at 92% 8%, var(--ui-gold-soft) 0, transparent 30%),
+    linear-gradient(180deg, var(--bg-color) 0%, var(--section-bg) 100%);
+  background-attachment: fixed;
+}
+
+h1,
+h2,
+h3,
+.site-title .title-text,
+.footer-brand-name {
+  font-family: "Orbitron", "Exo 2", var(--font-family-base);
+  letter-spacing: 0.02em;
+}
+
+.app-header {
+  border-bottom: 1px solid var(--ui-surface-border);
+  backdrop-filter: blur(20px);
+  box-shadow: 0 14px 32px var(--ui-surface-shadow);
+}
+
+.site-title {
+  gap: 14px;
+}
+
+.site-title .title-text {
+  text-shadow: 0 0 16px var(--ui-surface-glow);
+}
+
+.site-subtitle {
+  opacity: 0.88;
+  font-weight: var(--font-weight-semibold);
+}
+
+.section,
+.overall-summary-section,
+.controls-bar,
+.summary-table-container,
+.repurchase-table-wrapper,
+.stats-section,
+.app-footer .footer-card,
+body .dashboard-card,
+body .financial-card {
+  border: 1px solid var(--ui-surface-border);
+  box-shadow: 0 12px 34px var(--ui-surface-shadow);
+}
+
+.section:hover,
+.overall-summary-section:hover,
+.controls-bar:hover,
+body .dashboard-card:hover,
+body .financial-card:hover {
+  border-color: var(--color-val-rgba-59-130-246-0-35);
+  box-shadow: 0 16px 38px var(--ui-surface-shadow), 0 0 0 1px var(--ui-surface-glow);
+}
+
+.financial-cards-grid {
+  gap: clamp(14px, 1.2vw, 22px);
+}
+
+.controls-bar button,
+.controls-bar select,
+.controls-bar input,
+.professional-toolbar button,
+.professional-toolbar input,
+.section-sell button,
+.section-repurchase button {
+  min-height: 44px;
+}
+
+button,
+a,
+[role="button"],
+.financial-card,
+.dashboard-card {
+  cursor: pointer;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px var(--color-val-rgba-59-130-246-0-22);
+}
+
+.section,
+.overall-summary-section,
+.controls-bar,
+.section-portfolio-stats,
+.app-footer .footer-card {
+  animation: ui-enter-up 380ms ease-out both;
+}
+
+.overall-summary-section {
+  animation-delay: 60ms;
+}
+
+.controls-bar {
+  animation-delay: 120ms;
+}
+
+.section-portfolio-stats {
+  animation-delay: 160ms;
+}
+
+.app-footer .footer-card {
+  animation-delay: 220ms;
+}
+
+@keyframes ui-enter-up {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+html[data-theme="light"] body {
+  background-image:
+    radial-gradient(circle at 8% 2%, var(--color-val-rgba-59-130-246-0-08) 0, transparent 34%),
+    radial-gradient(circle at 92% 8%, var(--color-val-rgba-245-158-11-0-1) 0, transparent 24%),
+    linear-gradient(180deg, var(--bg-color) 0%, var(--color-val-hex-f8fafc) 100%);
+}
+
+html[data-theme="light"] body .section,
+html[data-theme="light"] body .overall-summary-section,
+html[data-theme="light"] body .controls-bar,
+html[data-theme="light"] body .summary-table-container,
+html[data-theme="light"] body .repurchase-table-wrapper,
+html[data-theme="light"] body .stats-section,
+html[data-theme="light"] body .app-footer .footer-card,
+html[data-theme="light"] body .dashboard-card,
+html[data-theme="light"] body .financial-card {
+  border-color: var(--color-val-rgba-59-130-246-0-15);
+  box-shadow: 0 10px 24px var(--color-val-rgba-0-0-0-0-08);
+}
+
+@media (max-width: 768px) {
+  .site-title .title-text {
+    letter-spacing: 0.01em;
+  }
+
+  .controls-bar button,
+  .controls-bar select,
+  .controls-bar input,
+  .professional-toolbar button,
+  .professional-toolbar input {
+    min-height: 46px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

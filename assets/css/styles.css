@@ -1,0 +1,20 @@
+@import "tokens/colors.css";
+@import "tokens/spacing.css";
+@import "tokens/radius.css";
+@import "tokens/shadows.css";
+@import "tokens/typography.css";
+
+@import "base/reset.css";
+@import "base/global.css";
+
+@import "layout/layout.css";
+@import "components/legacy.css";
+@import "utilities/utilities.css";
+@import "pages/pages.css";
+@import "pages/legal-pages.css";
+
+@import "themes/light.css";
+@import "themes/dark.css";
+
+@import "vendors/vendors.css";
+@import "pages/redesign.css";

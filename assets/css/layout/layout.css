@@ -1,0 +1,10 @@
+/* Layout primitives */
+.l-container {
+  width: min(1200px, 100%);
+  margin-inline: auto;
+  padding-inline: var(--space-4);
+}
+
+.l-stack > * + * {
+  margin-top: var(--space-4);
+}
