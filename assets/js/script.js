@@ -3959,7 +3959,7 @@ function validatePair(parsed) {
         return { valid: false, message: fullPairRequiredMessage, code: 'missing_parts' };
     }
 
-    if (!/^[A-Z0-9]{2,20}$/.test(parsed.base) || !/^[A-Z0-9]{2,10}$/.test(parsed.quote)) {
+    if (!/^[A-Z0-9]{1,20}$/.test(parsed.base) || !/^[A-Z0-9]{2,10}$/.test(parsed.quote)) {
         return { valid: false, message: `رمز الزوج "${parsed.normalizedInput}" غير صالح.`, code: 'invalid_format' };
     }
 
