@@ -1,6 +1,6 @@
 'use strict';
 
-const CURRENT_VERSION = '1.0.4';
+const CURRENT_VERSION = '1.0.43';
 const CACHE_PREFIX = 'osoul-';
 const STATIC_CACHE = `${CACHE_PREFIX}static-${CURRENT_VERSION}`;
 const DATA_CACHE = `${CACHE_PREFIX}data-${CURRENT_VERSION}`;
@@ -12,8 +12,8 @@ const STATIC_ASSETS = [
   './manifest.json',
   './remote_version.json',
   './update_popup.json',
-  './assets/css/styles.css',
-  './assets/js/script.js?v=8',
+  './assets/css/styles.css?v=43',
+  './assets/js/script.js?v=41',
   './data/exchanges.spot.js',
   './services/feeCalculator.js',
   './ui/tableRenderer.js',
@@ -103,6 +103,9 @@ function isDataRequest(request, url) {
     'prices',
     'markets',
     'coingecko',
+    'x.com',
+    'twitter',
+    'jina.ai',
     'binance',
     'kucoin',
     'kraken',

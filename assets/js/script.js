@@ -2077,6 +2077,31 @@ const totalInvestedSummaryEl = document.getElementById('totalInvestedSummary');
 const totalPnlAmountSummaryEl = document.getElementById('totalPnlAmountSummary');
 const totalCurrentValueSummaryEl = document.getElementById('totalCurrentValueSummary');
 const totalPnlPercentSummaryEl = document.getElementById('totalPnlPercentSummary');
+const activeTradesSectionEl = document.getElementById('activeTradesSection');
+const activeTradesContentEl = document.getElementById('activeTradesContent');
+const activeTradesCardsEl = document.getElementById('activeTradesCards');
+const activeTradesEmptyStateEl = document.getElementById('activeTradesEmptyState');
+const activeTradesToggleBtn = document.getElementById('activeTradesToggleBtn');
+const marketInsightsSectionEl = document.getElementById('marketInsightsSection');
+const miMarketCapValueEl = document.getElementById('miMarketCapValue');
+const miMarketCapChangeEl = document.getElementById('miMarketCapChange');
+const miMarketCapSparklinePathEl = document.getElementById('miMarketCapSparklinePath');
+const miMarketCapSparklineAreaEl = document.getElementById('miMarketCapSparklineArea');
+const miFearValueEl = document.getElementById('miFearValue');
+const miFearLabelEl = document.getElementById('miFearLabel');
+const miFearChartEl = document.getElementById('miFearChart');
+const miAltcoinValueEl = document.getElementById('miAltcoinValue');
+const miAltcoinSubEl = document.getElementById('miAltcoinSub');
+const miAltcoinFillEl = document.getElementById('miAltcoinFill');
+const miAltcoinThumbEl = document.getElementById('miAltcoinThumb');
+const miAltcoinCardEl = document.querySelector('.market-insight-card--alt');
+const miNewsCardEl = document.querySelector('.market-insight-card--news');
+const miNewsImageEl = document.getElementById('miNewsImage');
+const miNewsTitleEl = document.getElementById('miNewsTitle');
+const miNewsSummaryEl = document.getElementById('miNewsSummary');
+const miNewsSentimentEl = document.getElementById('miNewsSentiment');
+const miNewsSourceEl = document.getElementById('miNewsSource');
+const miNewsTranslateToggleEl = document.getElementById('miNewsTranslateToggle');
 const currentCoinDisplayElements = [
     document.getElementById('currentCoinDisplay1'),
     document.getElementById('currentCoinDisplay2'),
@@ -2097,6 +2122,7 @@ const LS_KEY_THEME = 'smcw_theme_preference';
 const LS_KEY_BALANCE_STATE = 'cryptoTrackerUniversal_v9_balanceState';
 const LS_KEY_FINANCIAL_PRIVACY = 'cryptoTrackerUniversal_v9_financialPrivacyMode';
 const LS_KEY_PRICE_CACHE = 'cryptoTrackerUniversal_v9_priceCache';
+const LS_KEY_ACTIVE_TRADES_COLLAPSED = 'cryptoTrackerUniversal_v9_activeTradesCollapsed';
 const BRAND_ASSET_BY_THEME = Object.freeze({
     dark: '../assets/icons/Osoul Pro Dark Mode.png',
     light: '../assets/icons/Osoul Pro Light Mode.png'
@@ -2117,6 +2143,13 @@ let financialPrivacyRefreshScheduled = false;
 let isApplyingFinancialPrivacyMask = false;
 let activePriceFetchPromise = null;
 let pendingManualRefreshRequest = false;
+let activeTradesFillersResizeDebounceTimer = null;
+let isActiveTradesCollapsed = false;
+let isActiveTradesSectionInitialized = false;
+let activeTradesTableHighlightTimer = null;
+let fearGreedGaugeElements = null;
+let fearGreedGaugeRenderedValue = 50;
+let fearGreedGaugeAnimationFrame = null;
 const financialPrivacyOriginalTextMap = new WeakMap();
 const financialPrivacyOriginalHtmlMap = new WeakMap();
 const FINANCIAL_PRIVACY_TEXT_TARGETS = [
@@ -2133,6 +2166,7 @@ const FINANCIAL_PRIVACY_TEXT_TARGETS = [
     { selector: '#tpPrice3', forceNumeric: true },
     { selector: '#slPrice', forceNumeric: true },
     { selector: '#portfolioTotalValue', forceNumeric: true },
+    { selector: '#activeTradesCards .active-trade-card .card-value', forceNumeric: true },
     { selector: '#repurchaseRows .repurchase-pnl', forceNumeric: true },
     { selector: '#totalBuyFeesDca', forceNumeric: true },
     { selector: '#totalSellFeesLedger', forceNumeric: true }
@@ -2280,6 +2314,7 @@ function toggleTheme() {
         if (themeToggle) { themeToggle.innerHTML = '<i class="fas fa-moon"></i>'; themeToggle.title = 'تبديل إلى الوضع الفاتح'; }
         localStorage.setItem(LS_KEY_THEME, 'dark');
         applyThemeBrandAssets('dark');
+        refreshFearGreedApexTheme();
     } else {
         // التبديل إلى الوضع الفاتح
         body.classList.add('light-mode');
@@ -2288,6 +2323,7 @@ function toggleTheme() {
         if (themeToggle) { themeToggle.innerHTML = '<i class="fas fa-sun"></i>'; themeToggle.title = 'تبديل إلى الوضع الداكن'; }
         localStorage.setItem(LS_KEY_THEME, 'light');
         applyThemeBrandAssets('light');
+        refreshFearGreedApexTheme();
     }
 }
 
@@ -2330,6 +2366,7 @@ function loadThemePreference() {
             themeToggle.title = 'تبديل إلى الوضع الداكن';
         }
         applyThemeBrandAssets('light');
+        refreshFearGreedApexTheme();
     } else {
         body.classList.remove('light-mode');
         root.setAttribute('data-theme', 'dark');
@@ -2339,6 +2376,7 @@ function loadThemePreference() {
             themeToggle.title = 'تبديل إلى الوضع الفاتح';
         }
         applyThemeBrandAssets('dark');
+        refreshFearGreedApexTheme();
     }
 }
 
@@ -4569,6 +4607,502 @@ function calculateSummaryData() {
 }
 
 
+function hasValidActiveTradeSymbol(symbol) {
+    const normalized = String(symbol || '').trim().toUpperCase();
+    if (!normalized) return false;
+    if (normalized === '-' || normalized === '--') return false;
+    if (normalized === 'NULL' || normalized === 'UNDEFINED') return false;
+    return true;
+}
+
+function hasPositiveNumericValue(value) {
+    const numeric = Number.parseFloat(value);
+    return Number.isFinite(numeric) && numeric > 0;
+}
+
+function hasValidBuyEntryForActiveTrade(symbol) {
+    const data = allCoinData[symbol];
+    if (!data || typeof data !== 'object') return false;
+
+    const initialEntryPrice = parseLooseNumber(data.initialEntryPrice);
+    const initialAmountDollars = parseLooseNumber(data.initialAmountDollars);
+    if (
+        Number.isFinite(initialEntryPrice) && initialEntryPrice > 0 &&
+        Number.isFinite(initialAmountDollars) && initialAmountDollars > 0
+    ) {
+        return true;
+    }
+
+    if (!Array.isArray(data.repurchases)) return false;
+    return data.repurchases.some((repurchase) => {
+        const repurchasePrice = parseLooseNumber(repurchase?.price);
+        const repurchaseAmount = parseLooseNumber(repurchase?.amount);
+        return (
+            Number.isFinite(repurchasePrice) && repurchasePrice > 0 &&
+            Number.isFinite(repurchaseAmount) && repurchaseAmount > 0
+        );
+    });
+}
+
+function isActiveTradeSummaryRow(item) {
+    if (!item || !hasValidActiveTradeSymbol(item.symbol)) return false;
+
+    const hasValidEntry = hasValidBuyEntryForActiveTrade(item.symbol);
+    const hasInvestedAmount = hasPositiveNumericValue(item.totalInvestedAmount);
+    const hasQuantity = hasPositiveNumericValue(item.totalCoinQty);
+
+    if (!(hasValidEntry || hasInvestedAmount || hasQuantity)) return false;
+    if (!(hasInvestedAmount || hasQuantity)) return false;
+    return true;
+}
+
+function getActiveTradeDisplayPair(symbol) {
+    const parsed = parsePair(symbol);
+    if (parsed.displayPair) return parsed.displayPair;
+    return String(symbol || '').trim().toUpperCase();
+}
+
+function normalizeActiveTradePairToken(value, fallback = '') {
+    const normalized = String(value || '')
+        .trim()
+        .toUpperCase()
+        .replace(/[^A-Z0-9._-]/g, '');
+    return normalized || fallback;
+}
+
+function getActiveTradeDisplayBase(baseText, maxLength = 9) {
+    const normalizedBase = normalizeActiveTradePairToken(baseText, '--');
+    if (normalizedBase.length <= maxLength) return normalizedBase;
+    return `${normalizedBase.slice(0, maxLength)}…`;
+}
+
+function getActiveTradePairParts(symbol) {
+    const parsed = parsePair(symbol);
+    const normalizedBase = normalizeActiveTradePairToken(
+        parsed.base || getActiveTradeDisplayPair(symbol),
+        '--'
+    );
+    const normalizedQuote = normalizeActiveTradePairToken(parsed.quote, '');
+    const displayBase = getActiveTradeDisplayBase(normalizedBase);
+
+    const fullPair = normalizedQuote ? `${normalizedBase}/${normalizedQuote}` : normalizedBase;
+
+    if (parsed.base && parsed.quote) {
+        return {
+            base: displayBase,
+            baseRaw: normalizedBase,
+            quote: normalizedQuote,
+            fullPair,
+            isBaseTruncated: normalizedBase !== displayBase
+        };
+    }
+
+    return {
+        base: displayBase,
+        baseRaw: normalizedBase,
+        quote: '',
+        fullPair,
+        isBaseTruncated: normalizedBase !== displayBase
+    };
+}
+
+function createActiveTradeSymbolTextNode(baseText, baseRawText = '') {
+    const textWrap = document.createElement('span');
+    textWrap.className = 'active-trade-symbol-text';
+
+    const baseNode = document.createElement('span');
+    baseNode.className = 'active-trade-symbol-base';
+    baseNode.textContent = String(baseText || '').trim().toUpperCase() || '--';
+    const rawLabel = String(baseRawText || '').trim().toUpperCase();
+    if (rawLabel) baseNode.setAttribute('title', rawLabel);
+    textWrap.appendChild(baseNode);
+    return textWrap;
+}
+
+function createActiveTradeBaseIconNode(baseSymbol) {
+    const iconWrap = document.createElement('span');
+    iconWrap.className = 'active-trade-symbol-main-icon';
+
+    const safeSymbol = String(baseSymbol || '').trim().toUpperCase() || 'USDT';
+    const iconNode = createCoinIcon(safeSymbol, 16);
+    if (iconNode) {
+        iconNode.setAttribute('aria-hidden', 'true');
+        iconWrap.appendChild(iconNode);
+    }
+
+    return iconWrap;
+}
+
+function createActiveTradeQuoteIconNode(quoteSymbol) {
+    const iconWrap = document.createElement('span');
+    iconWrap.className = 'active-trade-symbol-quote-icon';
+
+    const safeSymbol = String(quoteSymbol || '').trim().toUpperCase();
+    if (!safeSymbol) return iconWrap;
+
+    const iconNode = createCoinIcon(safeSymbol, 12);
+    if (iconNode) {
+        iconNode.setAttribute('aria-hidden', 'true');
+        iconWrap.appendChild(iconNode);
+    }
+
+    return iconWrap;
+}
+
+function getActiveTradePriceLabel(item) {
+    if (!isValidPriceValue(item?.marketPrice)) return '--';
+    return `$${formatPriceWithZeroCount(item.marketPrice)}`;
+}
+
+function getActiveTradePnlAmountLabel(item) {
+    const pnlAmount = Number(item?.pnlAmount);
+    if (!Number.isFinite(pnlAmount) || !isValidPriceValue(item?.marketPrice)) return '--';
+    return `$${formatNumber(pnlAmount, 2)}`;
+}
+
+function getActiveTradePnlPercentLabel(item) {
+    const pnlPercent = Number(item?.pnlPercent);
+    const invested = Number(item?.totalInvestedAmount);
+    if (!Number.isFinite(pnlPercent) || !isValidPriceValue(item?.marketPrice) || !(invested > 0)) return '--';
+    return `${formatNumber(pnlPercent, 2)}%`;
+}
+
+function getActiveTradePnlClassName(item) {
+    const pnlAmount = Number(item?.pnlAmount);
+    if (!Number.isFinite(pnlAmount)) return 'pnl-neutral';
+    if (pnlAmount > 0) return 'pnl-positive';
+    if (pnlAmount < 0) return 'pnl-negative';
+    return 'pnl-neutral';
+}
+
+function createActiveTradeMetric(labelText, valueText, valueClass = '') {
+    const metric = document.createElement('div');
+    metric.className = 'active-trade-metric';
+
+    const label = document.createElement('div');
+    label.className = 'card-label';
+    label.textContent = `${labelText} :`;
+
+    const value = document.createElement('div');
+    value.className = `card-value ltr-text ${valueClass}`.trim();
+    value.textContent = valueText;
+
+    metric.appendChild(label);
+    metric.appendChild(value);
+    return metric;
+}
+
+function getSummaryTableRowBySymbol(symbol) {
+    if (!summaryTableBody || !symbol) return null;
+    const normalizedSymbol = String(symbol).trim().toUpperCase();
+    if (!normalizedSymbol) return null;
+    return Array.from(summaryTableBody.querySelectorAll('tr[data-symbol]'))
+        .find((row) => String(row.dataset.symbol || '').trim().toUpperCase() === normalizedSymbol) || null;
+}
+
+function highlightSummaryRowFromActiveTrade(symbol, { shouldScroll = true } = {}) {
+    if (!summaryTableBody || !symbol) return;
+
+    const targetRow = getSummaryTableRowBySymbol(symbol);
+    if (!targetRow) return;
+
+    summaryTableBody
+        .querySelectorAll('.summary-row-from-active-trade')
+        .forEach((row) => row.classList.remove('summary-row-from-active-trade'));
+
+    if (activeTradesTableHighlightTimer) {
+        clearTimeout(activeTradesTableHighlightTimer);
+        activeTradesTableHighlightTimer = null;
+    }
+
+    targetRow.classList.add('summary-row-from-active-trade');
+
+    if (shouldScroll) {
+        targetRow.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+    }
+
+    activeTradesTableHighlightTimer = setTimeout(() => {
+        targetRow.classList.remove('summary-row-from-active-trade');
+        activeTradesTableHighlightTimer = null;
+    }, 4200);
+}
+
+function activateCoinFromActiveTradeCard(symbol) {
+    const normalizedSymbol = String(symbol || '').trim().toUpperCase();
+    if (!normalizedSymbol || !allCoinData[normalizedSymbol]) return;
+
+    if (!selectCoinsMode && coinSelector) {
+        coinSelector.value = normalizedSymbol;
+        handleCoinSelectionChange();
+    }
+
+    highlightSummaryRowFromActiveTrade(normalizedSymbol, { shouldScroll: true });
+}
+
+function createActiveTradeCard(item) {
+    const pnlClass = getActiveTradePnlClassName(item);
+    const pairParts = getActiveTradePairParts(item.symbol);
+    const symbolValue = String(item?.symbol || '').trim().toUpperCase();
+    const card = document.createElement('article');
+    card.className = 'financial-card active-trade-card';
+    card.classList.add('active-trade-card--real');
+    if (pnlClass === 'pnl-positive') card.classList.add('active-trade-card--profit');
+    else if (pnlClass === 'pnl-negative') card.classList.add('active-trade-card--loss');
+    else card.classList.add('active-trade-card--flat');
+    card.setAttribute('role', 'button');
+    card.setAttribute('tabindex', '0');
+    card.setAttribute('aria-label', `تحديد ${pairParts.fullPair || symbolValue || pairParts.base}`);
+    card.setAttribute('title', `تحديد ${pairParts.fullPair || symbolValue || pairParts.base}`);
+    card.dataset.symbol = symbolValue;
+
+    card.addEventListener('click', () => {
+        activateCoinFromActiveTradeCard(symbolValue);
+    });
+    card.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        activateCoinFromActiveTradeCard(symbolValue);
+    });
+
+    const symbolShell = document.createElement('div');
+    symbolShell.className = 'active-trade-symbol-shell';
+    symbolShell.setAttribute('aria-label', pairParts.fullPair || pairParts.baseRaw || pairParts.base);
+    symbolShell.setAttribute('title', pairParts.fullPair || pairParts.baseRaw || pairParts.base);
+
+    const symbolBadge = document.createElement('div');
+    symbolBadge.className = 'active-trade-symbol-badge active-trade-symbol-badge--text';
+    symbolBadge.classList.add(pnlClass);
+    if (pairParts.isBaseTruncated) symbolBadge.classList.add('is-truncated-base');
+    symbolBadge.setAttribute('title', pairParts.fullPair || pairParts.baseRaw || pairParts.base);
+
+    const symbolIcon = createActiveTradeBaseIconNode(pairParts.baseRaw);
+    const symbolText = createActiveTradeSymbolTextNode(pairParts.base, pairParts.baseRaw);
+    symbolBadge.appendChild(symbolIcon);
+    symbolBadge.appendChild(symbolText);
+
+    if (pairParts.quote) {
+        const symbolQuoteBadge = document.createElement('span');
+        symbolQuoteBadge.className = 'active-trade-symbol-quote-badge';
+        symbolQuoteBadge.classList.add(pnlClass);
+        symbolQuoteBadge.appendChild(createActiveTradeQuoteIconNode(pairParts.quote));
+
+        const quoteText = document.createElement('span');
+        quoteText.className = 'active-trade-symbol-quote-text';
+        quoteText.textContent = pairParts.quote;
+        symbolQuoteBadge.appendChild(quoteText);
+
+        symbolQuoteBadge.setAttribute('title', pairParts.quote);
+        symbolShell.appendChild(symbolBadge);
+        symbolShell.appendChild(symbolQuoteBadge);
+    } else {
+        symbolShell.classList.add('is-single-token');
+        symbolShell.appendChild(symbolBadge);
+    }
+
+
+    const cardContent = document.createElement('div');
+    cardContent.className = 'card-content-left';
+    cardContent.appendChild(createActiveTradeMetric('السعر', getActiveTradePriceLabel(item), 'active-trade-price'));
+    cardContent.appendChild(createActiveTradeMetric('الربح', getActiveTradePnlAmountLabel(item), `active-trade-pnl-amount ${pnlClass}`));
+    cardContent.appendChild(createActiveTradeMetric('النسبة', getActiveTradePnlPercentLabel(item), `active-trade-pnl-percent ${pnlClass}`));
+
+    card.appendChild(symbolShell);
+    card.appendChild(cardContent);
+    return card;
+}
+
+function getActiveTradesGridColumnCount() {
+    if (!activeTradesCardsEl || activeTradesCardsEl.hidden) return 1;
+
+    const template = window.getComputedStyle(activeTradesCardsEl).gridTemplateColumns || '';
+    if (!template || template === 'none') return 1;
+
+    if (template.includes('minmax(')) {
+        const minmaxTracks = template.match(/minmax\(/g);
+        if (Array.isArray(minmaxTracks) && minmaxTracks.length > 0) {
+            return Math.max(1, minmaxTracks.length);
+        }
+    }
+
+    const pxTracks = template.match(/-?\d*\.?\d+px/g);
+    if (Array.isArray(pxTracks) && pxTracks.length > 0) {
+        return Math.max(1, pxTracks.length);
+    }
+
+    return 1;
+}
+
+function createActiveTradeFillerCard() {
+    const card = document.createElement('article');
+    card.className = 'financial-card active-trade-card active-trade-card--filler';
+    card.setAttribute('aria-hidden', 'true');
+
+    const symbolShell = document.createElement('div');
+    symbolShell.className = 'active-trade-symbol-shell is-skeleton';
+
+    const symbolBadge = document.createElement('span');
+    symbolBadge.className = 'active-trade-symbol-badge active-trade-symbol-badge--skeleton';
+
+    const quoteBadge = document.createElement('span');
+    quoteBadge.className = 'active-trade-symbol-quote-badge active-trade-symbol-quote-badge--skeleton';
+
+    symbolShell.appendChild(symbolBadge);
+    symbolShell.appendChild(quoteBadge);
+
+    const content = document.createElement('div');
+    content.className = 'active-trade-filler-content';
+
+    for (let index = 0; index < 3; index += 1) {
+        const row = document.createElement('div');
+        row.className = 'active-trade-filler-row';
+
+        const value = document.createElement('span');
+        value.className = `active-trade-filler-line active-trade-filler-line--value active-trade-filler-line--value-${index + 1}`;
+
+        const label = document.createElement('span');
+        label.className = `active-trade-filler-line active-trade-filler-line--label active-trade-filler-line--label-${index + 1}`;
+
+        row.appendChild(value);
+        row.appendChild(label);
+        content.appendChild(row);
+    }
+
+    card.appendChild(symbolShell);
+    card.appendChild(content);
+    return card;
+}
+
+function applyActiveTradeRowFillers() {
+    if (!activeTradesCardsEl || activeTradesCardsEl.hidden) return;
+
+    activeTradesCardsEl.querySelectorAll('.active-trade-card--filler').forEach((node) => node.remove());
+
+    const realCards = activeTradesCardsEl.querySelectorAll('.active-trade-card--real');
+    const realCount = realCards.length;
+    if (!realCount) return;
+
+    const columnCount = getActiveTradesGridColumnCount();
+    if (columnCount <= 1) return;
+
+    const remainder = realCount % columnCount;
+    if (remainder === 0) return;
+
+    const fillersCount = columnCount - remainder;
+    for (let index = 0; index < fillersCount; index += 1) {
+        activeTradesCardsEl.appendChild(createActiveTradeFillerCard());
+    }
+}
+
+function queueActiveTradeFillersSync() {
+    requestAnimationFrame(() => {
+        applyActiveTradeRowFillers();
+    });
+}
+
+function handleActiveTradeFillersResize() {
+    clearTimeout(activeTradesFillersResizeDebounceTimer);
+    activeTradesFillersResizeDebounceTimer = setTimeout(() => {
+        applyActiveTradeRowFillers();
+    }, 120);
+}
+
+function updateActiveTradesToggleButton() {
+    if (!activeTradesToggleBtn) return;
+    const buttonLabel = isActiveTradesCollapsed ? 'إظهار' : 'إخفاء';
+    activeTradesToggleBtn.textContent = buttonLabel;
+    activeTradesToggleBtn.setAttribute('aria-expanded', isActiveTradesCollapsed ? 'false' : 'true');
+}
+
+function setActiveTradesCollapsedState(collapsed, options = {}) {
+    if (!activeTradesContentEl) return;
+
+    const { persist = true, immediate = false } = options;
+    isActiveTradesCollapsed = !!collapsed;
+    updateActiveTradesToggleButton();
+
+    if (persist) {
+        localStorage.setItem(LS_KEY_ACTIVE_TRADES_COLLAPSED, isActiveTradesCollapsed ? 'true' : 'false');
+    }
+
+    if (immediate) {
+        activeTradesContentEl.classList.toggle('is-collapsed', isActiveTradesCollapsed);
+        activeTradesContentEl.style.height = isActiveTradesCollapsed ? '0px' : 'auto';
+        activeTradesContentEl.style.opacity = isActiveTradesCollapsed ? '0' : '1';
+        activeTradesContentEl.setAttribute('aria-hidden', isActiveTradesCollapsed ? 'true' : 'false');
+        return;
+    }
+
+    const currentHeight = Math.max(0, activeTradesContentEl.getBoundingClientRect().height);
+    const targetHeight = isActiveTradesCollapsed ? 0 : Math.max(0, activeTradesContentEl.scrollHeight);
+
+    activeTradesContentEl.style.height = `${currentHeight}px`;
+    activeTradesContentEl.style.opacity = isActiveTradesCollapsed ? '1' : '0';
+    activeTradesContentEl.classList.toggle('is-collapsed', isActiveTradesCollapsed);
+    activeTradesContentEl.setAttribute('aria-hidden', isActiveTradesCollapsed ? 'true' : 'false');
+
+    requestAnimationFrame(() => {
+        activeTradesContentEl.style.height = `${targetHeight}px`;
+        activeTradesContentEl.style.opacity = isActiveTradesCollapsed ? '0' : '1';
+    });
+}
+
+function toggleActiveTradesVisibility() {
+    setActiveTradesCollapsedState(!isActiveTradesCollapsed);
+}
+
+function handleActiveTradesContentTransitionEnd(event) {
+    if (!activeTradesContentEl) return;
+    if (event.target !== activeTradesContentEl || event.propertyName !== 'height') return;
+
+    if (isActiveTradesCollapsed) {
+        activeTradesContentEl.style.height = '0px';
+    } else {
+        activeTradesContentEl.style.height = 'auto';
+    }
+}
+
+function initActiveTradesSection() {
+    if (isActiveTradesSectionInitialized) return;
+    if (!activeTradesContentEl || !activeTradesToggleBtn || !activeTradesCardsEl || !activeTradesEmptyStateEl) return;
+
+    const savedState = localStorage.getItem(LS_KEY_ACTIVE_TRADES_COLLAPSED);
+    isActiveTradesCollapsed = savedState === 'true';
+
+    activeTradesToggleBtn.addEventListener('click', toggleActiveTradesVisibility);
+    activeTradesContentEl.addEventListener('transitionend', handleActiveTradesContentTransitionEnd);
+    window.addEventListener('resize', handleActiveTradeFillersResize);
+    setActiveTradesCollapsedState(isActiveTradesCollapsed, { persist: false, immediate: true });
+
+    isActiveTradesSectionInitialized = true;
+}
+
+function renderActiveTradesSection(summaryRows) {
+    if (!activeTradesCardsEl || !activeTradesEmptyStateEl) return;
+    if (!isActiveTradesSectionInitialized) initActiveTradesSection();
+
+    const rows = Array.isArray(summaryRows) ? summaryRows : [];
+    const activeRows = rows.filter(isActiveTradeSummaryRow);
+
+    activeTradesCardsEl.innerHTML = '';
+
+    if (activeRows.length === 0) {
+        activeTradesCardsEl.hidden = true;
+        activeTradesEmptyStateEl.hidden = false;
+        activeTradesSectionEl?.classList.add('has-no-active-trades');
+        return;
+    }
+
+    activeRows.forEach((item) => {
+        activeTradesCardsEl.appendChild(createActiveTradeCard(item));
+    });
+
+    activeTradesCardsEl.hidden = false;
+    queueActiveTradeFillersSync();
+    activeTradesEmptyStateEl.hidden = true;
+    activeTradesSectionEl?.classList.remove('has-no-active-trades');
+}
+
+
 // Helper: Format display values for a coin
 function syncPriceBadgesWidth() {
     const badges = Array.from(document.querySelectorAll('.price-badge'));
@@ -4753,6 +5287,7 @@ function updateSummaryTable() {
     if (summaryRows.length === 0) {
         summaryTableBody.innerHTML = `<tr><td colspan="${SUMMARY_TABLE_COLUMN_COUNT}" style="text-align:center; padding: 30px; font-weight: normal; color: var(--text-muted);">لا توجد عملات مضافة حالياً.</td></tr>`;
         resetTotals();
+        renderActiveTradesSection([]);
         schedulePriceBadgesWidthSync();
         return;
     }
@@ -4770,6 +5305,7 @@ function updateSummaryTable() {
     });
 
     updateTotalsDisplay(totals);
+    renderActiveTradesSection(summaryRows);
     schedulePriceBadgesWidthSync();
 }
 
@@ -5623,6 +6159,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadThemePreference();
     createRepurchaseRows();
     initPriceBadgesWidthSync();
+    initActiveTradesSection();
     loadFinancialPrivacyPreference();
     loadAllDataFromLocalStorage();
     updateCoinSelector();
@@ -6625,6 +7162,1870 @@ document.getElementById('datetimeModal').addEventListener('click', function (e) 
 
 let tickerInterval;
 const TICKER_CACHE_KEY = 'smcw_ticker_data';
+let latestTickerMarketData = [];
+let fearGreedValueCache = null;
+let marketInsightsInterval = null;
+let marketInsightsRefreshInFlight = false;
+const CMC_GLOBAL_METRICS_URL = 'https://api.coinmarketcap.com/data-api/v3/global-metrics/quotes/latest';
+const CMC_LISTING_URL = 'https://api.coinmarketcap.com/data-api/v3/cryptocurrency/listing?start=1&limit=300&sortBy=market_cap&sortType=desc&convert=USD';
+const CMC_PRO_GLOBAL_METRICS_URL = 'https://pro-api.coinmarketcap.com/v1/global-metrics/quotes/latest';
+const CMC_PRO_FEAR_GREED_URL = 'https://pro-api.coinmarketcap.com/v3/fear-and-greed/historical';
+const CMC_CHARTS_PAGE_URL = 'https://coinmarketcap.com/charts/';
+const CMC_FEAR_GREED_PAGE_URL = 'https://coinmarketcap.com/charts/fear-and-greed-index/';
+const CMC_ALTCOIN_PAGE_URL = 'https://coinmarketcap.com/charts/altcoin-season-index/';
+const CMC_RSI_PAGE_URL = 'https://coinmarketcap.com/charts/rsi/';
+const CMC_ALTCOIN_PRIMARY_URL = 'https://api.coinmarketcap.com/data-api/v3/global-metrics/crypto/overview/detail?range=1d';
+const TWITTER_NEWS_HOME_URL = 'https://x.com/explore';
+const TWITTER_MARKDOWN_FETCH_BASE = 'https://r.jina.ai/http://x.com/';
+const TWITTER_NEWS_IMAGE_FALLBACK = '../assets/icons/Osoul Pro Dark Mode.png';
+const TWITTER_ACCOUNT_BATCH_SIZE = 3;
+const TWITTER_IMPORTANT_ACCOUNTS = Object.freeze([
+    { handle: 'WatcherGuru', label: 'WatcherGuru', weight: 6 },
+    { handle: 'WuBlockchain', label: 'WuBlockchain', weight: 6 },
+    { handle: 'tier10k', label: 'Tier10K', weight: 5 },
+    { handle: 'whale_alert', label: 'Whale Alert', weight: 5 },
+    { handle: 'CoinDesk', label: 'CoinDesk', weight: 4 },
+    { handle: 'Cointelegraph', label: 'Cointelegraph', weight: 4 },
+    { handle: 'TheBlock__', label: 'The Block', weight: 4 }
+]);
+const COINGECKO_GLOBAL_URL = 'https://api.coingecko.com/api/v3/global';
+const COINGECKO_MARKETS_URL = 'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page=1&sparkline=false&price_change_percentage=24h,90d';
+const ALTERNATIVE_FNG_URL = 'https://api.alternative.me/fng/?limit=1&format=json';
+const MARKET_INSIGHTS_REFRESH_MS = 30 * 1000;
+const ALTCOIN_FETCH_TIMEOUT_MS = 12000;
+const MARKET_INSIGHTS_CACHE_VERSION = 4;
+const MARKET_NEWS_CACHE_KEY = 'smcw_market_news_latest';
+const MARKET_NEWS_CACHE_VERSION = 1;
+const MARKET_NEWS_INTERVAL_MIN_MS = 35 * 1000;
+const MARKET_NEWS_INTERVAL_BASE_MS = 65 * 1000;
+const MARKET_NEWS_INTERVAL_SLOW_MS = 3 * 60 * 1000;
+const MARKET_NEWS_INTERVAL_BG_MS = 5 * 60 * 1000;
+const MARKET_NEWS_INTERVAL_RATE_LIMIT_MS = 15 * 60 * 1000;
+const LS_KEY_NEWS_TRANSLATE_ENABLED = 'newsTranslateEnabled';
+const cmcInsightsState = {
+    marketCap: null,
+    marketCapChange: null,
+    btcDominance: null,
+    changeSeries: [],
+    altcoinIndex: null,
+    fearGreed: null,
+    fearGreedLabel: ''
+};
+const marketNewsState = {
+    latest: null,
+    currentFingerprint: '',
+    seenFingerprints: new Set(),
+    translationCache: new Map(),
+    translateEnabled: false,
+    activeTranslationToken: 0,
+    timerId: null,
+    inFlight: false,
+    unchangedStreak: 0,
+    errorStreak: 0,
+    lastFetchAt: 0,
+    rateLimitRemaining: null,
+    rateLimitResetAt: null,
+    accountCursor: 0,
+    visibilityHandlerBound: false
+};
+const altcoinSeasonState = {
+    inFlight: false,
+    controller: null,
+    hasError: false,
+    unloadHandlerBound: false
+};
+
+function buildAllOriginsUrl(targetUrl) {
+    return `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
+}
+
+function buildJinaAiUrl(targetUrl) {
+    const normalized = String(targetUrl || '').replace(/^https?:\/\//i, '');
+    return `https://r.jina.ai/http://${normalized}`;
+}
+
+function getCmcProApiKey() {
+    try {
+        const keyFromStorage = localStorage.getItem('smcw_cmc_pro_api_key');
+        const keyFromWindow = window.CMC_PRO_API_KEY || window.__CMC_PRO_API_KEY__;
+        const keyFromMeta = document.querySelector('meta[name="cmc-pro-api-key"]')?.getAttribute('content');
+        const key = String(keyFromStorage || keyFromWindow || keyFromMeta || '').trim();
+        return key || '';
+    } catch (_error) {
+        return '';
+    }
+}
+
+function normalizeWhitespace(value) {
+    return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
+function normalizeTwitterHandle(value) {
+    return String(value || '').trim().replace(/^@+/, '').toLowerCase();
+}
+
+function loadNewsTranslatePreference() {
+    try {
+        const raw = localStorage.getItem(LS_KEY_NEWS_TRANSLATE_ENABLED);
+        marketNewsState.translateEnabled = raw === 'true';
+    } catch (_error) {
+        marketNewsState.translateEnabled = false;
+    }
+}
+
+function persistNewsTranslatePreference() {
+    try {
+        localStorage.setItem(LS_KEY_NEWS_TRANSLATE_ENABLED, marketNewsState.translateEnabled ? 'true' : 'false');
+    } catch (_error) {
+        // ignore localStorage write failures
+    }
+}
+
+function updateNewsTranslateToggleUi() {
+    if (!miNewsTranslateToggleEl) return;
+    const enabled = !!marketNewsState.translateEnabled;
+    miNewsTranslateToggleEl.classList.toggle('is-active', enabled);
+    miNewsTranslateToggleEl.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+    miNewsTranslateToggleEl.setAttribute('title', enabled ? 'إلغاء الترجمة' : 'تفعيل الترجمة');
+}
+
+function isLikelyArabicText(value) {
+    return /[\u0600-\u06FF]/.test(String(value || ''));
+}
+
+function parseGoogleTranslateText(payload) {
+    if (!Array.isArray(payload) || !Array.isArray(payload[0])) return '';
+    return payload[0]
+        .map((chunk) => (Array.isArray(chunk) ? String(chunk[0] || '') : ''))
+        .join('')
+        .trim();
+}
+
+async function translateTextToArabic(text) {
+    const sourceText = normalizeWhitespace(text);
+    if (!sourceText) return '';
+    if (isLikelyArabicText(sourceText)) return sourceText;
+
+    const endpoint = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=ar&dt=t&q=${encodeURIComponent(sourceText)}`;
+    try {
+        const response = await fetch(endpoint, {
+            method: 'GET',
+            signal: AbortSignal.timeout(9000),
+            cache: 'no-store'
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const json = await response.json();
+        const translated = normalizeWhitespace(parseGoogleTranslateText(json));
+        return translated || '';
+    } catch (_error) {
+        return '';
+    }
+}
+
+async function getTranslatedNewsFields(newsItem) {
+    if (!newsItem || typeof newsItem !== 'object') {
+        return { title: '', summary: '' };
+    }
+
+    const cacheKey = normalizeWhitespace(newsItem.fingerprint || newsItem.sourceUrl || newsItem.title || '');
+    if (cacheKey && marketNewsState.translationCache.has(cacheKey)) {
+        return marketNewsState.translationCache.get(cacheKey);
+    }
+
+    const [titleAr, summaryAr] = await Promise.all([
+        translateTextToArabic(newsItem.title || ''),
+        translateTextToArabic(newsItem.summary || newsItem.title || '')
+    ]);
+
+    const translated = {
+        title: titleAr || 'تعذر ترجمة العنوان حالياً',
+        summary: summaryAr || 'تعذر ترجمة الملخص حالياً'
+    };
+
+    if (cacheKey) {
+        marketNewsState.translationCache.set(cacheKey, translated);
+        if (marketNewsState.translationCache.size > 240) {
+            const recentEntries = Array.from(marketNewsState.translationCache.entries()).slice(-180);
+            marketNewsState.translationCache = new Map(recentEntries);
+        }
+    }
+
+    return translated;
+}
+
+function clampText(value, maxLength) {
+    const normalized = normalizeWhitespace(value);
+    if (normalized.length <= maxLength) return normalized;
+    return `${normalized.slice(0, Math.max(0, maxLength - 1)).trim()}…`;
+}
+
+function parseNewsTimestamp(value) {
+    if (!value) return null;
+    const parsed = Date.parse(String(value));
+    if (Number.isFinite(parsed)) return parsed;
+
+    const asNumber = Number(value);
+    if (!Number.isFinite(asNumber)) return null;
+    // Some APIs return unix seconds.
+    return asNumber > 1_000_000_000_000 ? asNumber : (asNumber * 1000);
+}
+
+function normalizeNewsSentiment(rawSentiment, title, summary) {
+    const value = String(rawSentiment || '').trim().toLowerCase();
+    if (value.includes('pos') || value.includes('bull')) return 'positive';
+    if (value.includes('neg') || value.includes('bear')) return 'negative';
+
+    const text = `${String(title || '')} ${String(summary || '')}`.toLowerCase();
+    const positiveKeywords = [
+        'surge', 'rally', 'gain', 'bullish', 'approval', 'adoption', 'partnership',
+        'record high', 'inflow', 'breakout', 'rebound', 'upgrade', 'growth', 'rise',
+        'ارتفاع', 'صعود', 'مكاسب', 'نمو', 'اعتماد', 'شراكة', 'اختراق', 'تعافي'
+    ];
+    const negativeKeywords = [
+        'crash', 'drop', 'decline', 'sell-off', 'hack', 'breach', 'lawsuit', 'ban',
+        'bearish', 'outflow', 'liquidation', 'risk', 'fall', 'loss', 'slump',
+        'هبوط', 'خسائر', 'تراجع', 'انخفاض', 'اختراق أمني', 'حظر', 'دعوى', 'تصفية'
+    ];
+
+    let score = 0;
+    positiveKeywords.forEach((keyword) => {
+        if (text.includes(keyword)) score += 1;
+    });
+    negativeKeywords.forEach((keyword) => {
+        if (text.includes(keyword)) score -= 1;
+    });
+
+    return score >= 0 ? 'positive' : 'negative';
+}
+
+function normalizeCryptoNewsItem(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+
+    const title = normalizeWhitespace(raw.title || raw.headline || raw.name || '');
+    const sourceUrl = normalizeWhitespace(raw.news_url || raw.url || raw.link || raw.sourceUrl || '');
+    if (!title || !sourceUrl) return null;
+
+    const summary = normalizeWhitespace(
+        raw.text ||
+        raw.description ||
+        raw.summary ||
+        raw.snippet ||
+        ''
+    );
+    const sourceName = normalizeWhitespace(raw.source_name || raw.source || raw.site || raw.sourceName || 'X / Twitter');
+    const publishedAt = parseNewsTimestamp(raw.date || raw.published_at || raw.publishedAt || raw.time || raw.datetime);
+    const imageUrl = normalizeWhitespace(raw.image_url || raw.image || raw.thumbnail || raw.photo_url || raw.imageUrl || '');
+    const sentiment = normalizeNewsSentiment(raw.sentiment || raw.sentiment_score || raw.sentiment_label, title, summary);
+
+    const rawId = normalizeWhitespace(raw.news_id || raw.id || raw.guid || '');
+    const fingerprint = rawId || `${sourceUrl}|${title}|${publishedAt || ''}`;
+
+    return {
+        id: rawId,
+        fingerprint,
+        title,
+        summary,
+        sourceUrl,
+        sourceName,
+        publishedAt: Number.isFinite(publishedAt) ? publishedAt : null,
+        imageUrl: imageUrl || TWITTER_NEWS_IMAGE_FALLBACK,
+        sentiment,
+        importanceScore: Number(raw?.importanceScore) || 0
+    };
+}
+
+function formatNewsRelativeTime(timestamp) {
+    if (!Number.isFinite(timestamp)) return 'Now';
+    const diffMs = Math.max(0, Date.now() - timestamp);
+    const diffMinutes = Math.floor(diffMs / 60000);
+    if (diffMinutes < 1) return 'Now';
+    if (diffMinutes < 60) return `${diffMinutes}m ago`;
+    const diffHours = Math.floor(diffMinutes / 60);
+    if (diffHours < 24) return `${diffHours}h ago`;
+    const diffDays = Math.floor(diffHours / 24);
+    return `${diffDays}d ago`;
+}
+
+function pickLatestUniqueNews(newsItems) {
+    const list = Array.isArray(newsItems) ? newsItems : [];
+    if (!list.length) return null;
+
+    for (const item of list) {
+        if (!item?.fingerprint) continue;
+        if (!marketNewsState.seenFingerprints.has(item.fingerprint)) {
+            return item;
+        }
+    }
+    return list[0];
+}
+
+function setMarketNewsSentimentBadge(sentiment) {
+    if (!miNewsSentimentEl) return;
+    const normalized = sentiment === 'positive' ? 'positive' : 'negative';
+    miNewsSentimentEl.classList.remove('is-positive', 'is-negative');
+    miNewsSentimentEl.classList.add(normalized === 'positive' ? 'is-positive' : 'is-negative');
+    miNewsSentimentEl.textContent = normalized === 'positive' ? 'Positive' : 'Negative';
+}
+
+function applyMarketNewsCard(newsItem) {
+    if (!miNewsCardEl) return;
+    const renderToken = ++marketNewsState.activeTranslationToken;
+
+    const hasNews = !!newsItem;
+    miNewsCardEl.classList.toggle('is-empty', !hasNews);
+
+    if (!hasNews) {
+        miNewsCardEl.dataset.insightUrl = TWITTER_NEWS_HOME_URL;
+        if (miNewsTitleEl) miNewsTitleEl.textContent = 'لا توجد أخبار جديدة حالياً';
+        if (miNewsSummaryEl) miNewsSummaryEl.textContent = 'سيتم عرض آخر خبر مهم من حسابات تويتر الموثوقة.';
+        if (miNewsSourceEl) miNewsSourceEl.textContent = 'X / Twitter';
+        if (miNewsImageEl) {
+            miNewsImageEl.src = TWITTER_NEWS_IMAGE_FALLBACK;
+            miNewsImageEl.alt = '';
+        }
+        setMarketNewsSentimentBadge('negative');
+        return;
+    }
+
+    const shortTitle = clampText(newsItem.title, 96);
+    const shortSummary = clampText(newsItem.summary || newsItem.title, 140);
+    const timeLabel = formatNewsRelativeTime(newsItem.publishedAt);
+    const sourceLabel = clampText(newsItem.sourceName || 'X / Twitter', 26);
+
+    miNewsCardEl.dataset.insightUrl = newsItem.sourceUrl || TWITTER_NEWS_HOME_URL;
+    if (miNewsSourceEl) miNewsSourceEl.textContent = `${sourceLabel} • ${timeLabel}`;
+    if (miNewsImageEl) {
+        miNewsImageEl.src = newsItem.imageUrl || TWITTER_NEWS_IMAGE_FALLBACK;
+        miNewsImageEl.alt = shortTitle;
+    }
+    setMarketNewsSentimentBadge(newsItem.sentiment);
+
+    if (!marketNewsState.translateEnabled) {
+        if (miNewsTitleEl) miNewsTitleEl.textContent = shortTitle;
+        if (miNewsSummaryEl) miNewsSummaryEl.textContent = shortSummary;
+        return;
+    }
+
+    if (miNewsTitleEl) miNewsTitleEl.textContent = 'جاري الترجمة...';
+    if (miNewsSummaryEl) miNewsSummaryEl.textContent = 'يتم تجهيز النسخة العربية من الخبر.';
+
+    const newsFingerprint = normalizeWhitespace(newsItem.fingerprint || newsItem.sourceUrl || '');
+    (async () => {
+        const translated = await getTranslatedNewsFields(newsItem);
+        if (!marketNewsState.translateEnabled) return;
+        if (renderToken !== marketNewsState.activeTranslationToken) return;
+        if (
+            newsFingerprint &&
+            normalizeWhitespace(marketNewsState.currentFingerprint || '') &&
+            newsFingerprint !== normalizeWhitespace(marketNewsState.currentFingerprint)
+        ) {
+            return;
+        }
+
+        if (miNewsTitleEl) miNewsTitleEl.textContent = clampText(translated.title, 96);
+        if (miNewsSummaryEl) miNewsSummaryEl.textContent = clampText(translated.summary, 140);
+    })();
+}
+
+function toggleNewsTranslateMode() {
+    marketNewsState.translateEnabled = !marketNewsState.translateEnabled;
+    persistNewsTranslatePreference();
+    updateNewsTranslateToggleUi();
+
+    if (marketNewsState.latest) {
+        applyMarketNewsCard(marketNewsState.latest);
+    } else {
+        applyMarketNewsCard(null);
+    }
+}
+
+function persistMarketNewsCache() {
+    try {
+        if (!marketNewsState.latest) return;
+
+        localStorage.setItem(MARKET_NEWS_CACHE_KEY, JSON.stringify({
+            version: MARKET_NEWS_CACHE_VERSION,
+            latest: marketNewsState.latest,
+            seen: Array.from(marketNewsState.seenFingerprints).slice(-180),
+            timestamp: Date.now()
+        }));
+    } catch (error) {
+        console.error('[Market News] Failed to persist cache:', error);
+    }
+}
+
+function loadMarketNewsCache() {
+    try {
+        const raw = localStorage.getItem(MARKET_NEWS_CACHE_KEY);
+        if (!raw) return;
+        const cache = JSON.parse(raw);
+        if (Number(cache?.version) !== MARKET_NEWS_CACHE_VERSION) return;
+
+        const cachedLatest = normalizeCryptoNewsItem(cache?.latest);
+        if (cachedLatest) {
+            marketNewsState.latest = cachedLatest;
+            marketNewsState.currentFingerprint = cachedLatest.fingerprint || '';
+            applyMarketNewsCard(cachedLatest);
+        }
+
+        if (Array.isArray(cache?.seen)) {
+            marketNewsState.seenFingerprints = new Set(
+                cache.seen
+                    .map((value) => normalizeWhitespace(value))
+                    .filter(Boolean)
+                    .slice(-180)
+            );
+        }
+    } catch (error) {
+        console.error('[Market News] Failed to load cache:', error);
+    }
+}
+
+function trackMarketNewsRateLimit(response) {
+    if (!response?.headers) return;
+    const remaining = Number(response.headers.get('x-ratelimit-remaining'));
+    const resetRaw = response.headers.get('x-ratelimit-reset');
+
+    if (Number.isFinite(remaining)) {
+        marketNewsState.rateLimitRemaining = Math.max(0, Math.floor(remaining));
+    }
+    if (resetRaw) {
+        const resetNumeric = Number(resetRaw);
+        if (Number.isFinite(resetNumeric)) {
+            marketNewsState.rateLimitResetAt = resetNumeric > 1_000_000_000_000 ? resetNumeric : resetNumeric * 1000;
+        }
+    }
+}
+
+async function fetchJsonFromUrls(urls, timeoutMs = 7000) {
+    let lastError = null;
+
+    for (const url of urls) {
+        try {
+            const response = await fetch(url, {
+                signal: AbortSignal.timeout(timeoutMs),
+                cache: 'no-store'
+            });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            return await response.json();
+        } catch (error) {
+            lastError = error;
+        }
+    }
+
+    throw lastError || new Error('All sources failed');
+}
+
+async function fetchTextFromUrls(urls, timeoutMs = 9000) {
+    let lastError = null;
+
+    for (const url of urls) {
+        try {
+            const response = await fetch(url, {
+                signal: AbortSignal.timeout(timeoutMs),
+                cache: 'no-store'
+            });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            return await response.text();
+        } catch (error) {
+            lastError = error;
+        }
+    }
+
+    throw lastError || new Error('All sources failed');
+}
+
+function clampNumberToRange(value, min, max) {
+    return Math.min(Math.max(value, min), max);
+}
+
+function formatCompactUsd(value) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return '--';
+    const absValue = Math.abs(numeric);
+
+    if (absValue >= 1_000_000_000_000) return `${(numeric / 1_000_000_000_000).toFixed(2)}T`;
+    if (absValue >= 1_000_000_000) return `${(numeric / 1_000_000_000).toFixed(2)}B`;
+    if (absValue >= 1_000_000) return `${(numeric / 1_000_000).toFixed(2)}M`;
+    if (absValue >= 1_000) return `${(numeric / 1_000).toFixed(2)}K`;
+    return formatNumber(numeric, 2);
+}
+
+function getFearGreedLabel(value) {
+    if (value < 25) return 'Extreme Fear';
+    if (value < 45) return 'Fear';
+    if (value < 56) return 'Neutral';
+    if (value < 75) return 'Greed';
+    return 'Extreme Greed';
+}
+
+function normalizeFearGreedLabel(label) {
+    const normalized = String(label || '').trim().toLowerCase();
+    if (!normalized) return '';
+    if (normalized.includes('extreme') && normalized.includes('fear')) return 'Extreme Fear';
+    if (normalized.includes('fear')) return 'Fear';
+    if (normalized.includes('neutral')) return 'Neutral';
+    if (normalized.includes('extreme') && normalized.includes('greed')) return 'Extreme Greed';
+    if (normalized.includes('greed')) return 'Greed';
+    return '';
+}
+
+function buildMarketSparklinePaths(values, width = 180, height = 44, padding = 3) {
+    const points = Array.isArray(values)
+        ? values.map((value) => Number(value)).filter((value) => Number.isFinite(value))
+        : [];
+
+    if (points.length < 2) {
+        const yMid = Math.round(height / 2);
+        return {
+            path: `M${padding} ${yMid} L${width - padding} ${yMid}`,
+            area: `M${padding} ${height - padding} L${padding} ${yMid} L${width - padding} ${yMid} L${width - padding} ${height - padding} Z`
+        };
+    }
+
+    const minValue = Math.min(...points);
+    const maxValue = Math.max(...points);
+    const range = maxValue - minValue || 1;
+
+    const coordinates = points.map((value, index) => {
+        const ratio = points.length > 1 ? index / (points.length - 1) : 0;
+        const x = padding + ratio * (width - padding * 2);
+        const y = padding + (1 - ((value - minValue) / range)) * (height - padding * 2);
+        return { x, y };
+    });
+
+    const path = coordinates
+        .map((point, index) => `${index === 0 ? 'M' : 'L'}${point.x.toFixed(2)} ${point.y.toFixed(2)}`)
+        .join(' ');
+
+    const firstPoint = coordinates[0];
+    const lastPoint = coordinates[coordinates.length - 1];
+    const floorY = (height - padding).toFixed(2);
+    const area = `${path} L${lastPoint.x.toFixed(2)} ${floorY} L${firstPoint.x.toFixed(2)} ${floorY} Z`;
+
+    return { path, area };
+}
+
+function updateScaleMeter(fillElement, thumbElement, value) {
+    if (!fillElement || !thumbElement) return;
+    const safeValue = clampNumberToRange(Number(value) || 0, 0, 100);
+    fillElement.style.width = `${safeValue}%`;
+    thumbElement.style.left = `${safeValue}%`;
+}
+
+const FEAR_GREED_GAUGE_CONFIG = Object.freeze({
+    width: 144,
+    height: 78,
+    dotSize: 6,
+    ringWidth: 2,
+    gapDegree: 8,
+    strokeWidth: 6,
+    startAngleOffset: 0,
+    endAngleOffset: 0,
+    innerPadding: 0
+});
+
+const FEAR_GREED_GAUGE_COLORS = Object.freeze([
+    '#EA3943',
+    '#EA8C00',
+    '#F3D42F',
+    '#93D900',
+    '#16C784'
+]);
+
+function isFearGreedLightTheme() {
+    return document.documentElement.getAttribute('data-theme') === 'light' || document.body.classList.contains('light-mode');
+}
+
+function fearGreedGaugePoint(cx, cy, radius, angleDeg) {
+    const rad = ((angleDeg - 90) * Math.PI) / 180;
+    return {
+        x: cx + (radius * Math.cos(rad)),
+        y: cy + (radius * Math.sin(rad))
+    };
+}
+
+function buildFearGreedGaugeArcPath(cx, cy, radius, startAngle, sweepAngle) {
+    const startPoint = fearGreedGaugePoint(cx, cy, radius, startAngle);
+    const endPoint = fearGreedGaugePoint(cx, cy, radius, startAngle + sweepAngle);
+    const largeArcFlag = sweepAngle >= 180 ? '1' : '0';
+    return `M ${startPoint.x.toFixed(3)} ${startPoint.y.toFixed(3)} A ${radius.toFixed(3)} ${radius.toFixed(3)} 0 ${largeArcFlag} 1 ${endPoint.x.toFixed(3)} ${endPoint.y.toFixed(3)}`;
+}
+
+function getFearGreedGaugeGeometry() {
+    const margin = FEAR_GREED_GAUGE_CONFIG.innerPadding || (
+        FEAR_GREED_GAUGE_CONFIG.dotSize +
+        FEAR_GREED_GAUGE_CONFIG.ringWidth +
+        (FEAR_GREED_GAUGE_CONFIG.strokeWidth / 2)
+    );
+    const radius = (FEAR_GREED_GAUGE_CONFIG.width - FEAR_GREED_GAUGE_CONFIG.strokeWidth - (2 * margin)) / 2;
+    const centerX = FEAR_GREED_GAUGE_CONFIG.width / 2;
+    const centerY = FEAR_GREED_GAUGE_CONFIG.height - margin;
+    const sweep = 180 - FEAR_GREED_GAUGE_CONFIG.startAngleOffset - FEAR_GREED_GAUGE_CONFIG.endAngleOffset;
+    const segmentCount = FEAR_GREED_GAUGE_COLORS.length;
+    const segmentSweep = (sweep - (FEAR_GREED_GAUGE_CONFIG.gapDegree * (segmentCount - 1))) / segmentCount;
+
+    return {
+        margin,
+        radius,
+        centerX,
+        centerY,
+        sweep,
+        segmentCount,
+        segmentSweep
+    };
+}
+
+function fearGreedValueToProgressAngle(value) {
+    const safeValue = clampNumberToRange(Number(value) || 0, 0, 100);
+    const geometry = getFearGreedGaugeGeometry();
+    return (safeValue / 100) * geometry.sweep + FEAR_GREED_GAUGE_CONFIG.startAngleOffset;
+}
+
+function initFearGreedApexChart() {
+    if (!miFearChartEl) return;
+    if (fearGreedGaugeElements) return;
+
+    const geometry = getFearGreedGaugeGeometry();
+    const svgNs = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(svgNs, 'svg');
+    svg.setAttribute('class', 'mi-fng-gauge-svg');
+    svg.setAttribute('viewBox', `0 0 ${FEAR_GREED_GAUGE_CONFIG.width} ${FEAR_GREED_GAUGE_CONFIG.height}`);
+    svg.setAttribute('aria-hidden', 'true');
+
+    const segmentsGroup = document.createElementNS(svgNs, 'g');
+    segmentsGroup.setAttribute('class', 'mi-fng-gauge-segments');
+
+    FEAR_GREED_GAUGE_COLORS.forEach((segmentColor, index) => {
+        const segmentStart = -90
+            + FEAR_GREED_GAUGE_CONFIG.startAngleOffset
+            + (index * (geometry.segmentSweep + FEAR_GREED_GAUGE_CONFIG.gapDegree));
+        const segmentPath = document.createElementNS(svgNs, 'path');
+        segmentPath.setAttribute('class', 'mi-fng-gauge-segment');
+        segmentPath.setAttribute('d', buildFearGreedGaugeArcPath(
+            geometry.centerX,
+            geometry.centerY,
+            geometry.radius,
+            segmentStart,
+            geometry.segmentSweep
+        ));
+        segmentPath.setAttribute('stroke', segmentColor);
+        segmentPath.setAttribute('stroke-width', String(FEAR_GREED_GAUGE_CONFIG.strokeWidth));
+        segmentPath.setAttribute('fill', 'none');
+        segmentPath.setAttribute('stroke-linecap', 'round');
+        segmentsGroup.appendChild(segmentPath);
+    });
+    svg.appendChild(segmentsGroup);
+
+    const pointer = document.createElementNS(svgNs, 'circle');
+    pointer.setAttribute('class', 'mi-fng-gauge-pointer');
+    pointer.setAttribute('r', String(FEAR_GREED_GAUGE_CONFIG.dotSize));
+    svg.appendChild(pointer);
+
+    miFearChartEl.textContent = '';
+    miFearChartEl.appendChild(svg);
+
+    fearGreedGaugeElements = {
+        pointer
+    };
+
+    refreshFearGreedApexTheme();
+    renderFearGreedGauge(fearGreedGaugeRenderedValue);
+}
+
+function refreshFearGreedApexTheme() {
+    if (!fearGreedGaugeElements) return;
+    fearGreedGaugeElements.pointer.setAttribute('fill', '#ffffff');
+}
+
+function renderFearGreedGauge(value) {
+    if (!fearGreedGaugeElements) {
+        initFearGreedApexChart();
+        if (!fearGreedGaugeElements) return;
+    }
+
+    const safeValue = clampNumberToRange(Number(value) || 0, 0, 100);
+    const geometry = getFearGreedGaugeGeometry();
+    const progressAngle = fearGreedValueToProgressAngle(safeValue);
+    const absoluteAngle = -90 + progressAngle;
+    const point = fearGreedGaugePoint(
+        geometry.centerX,
+        geometry.centerY,
+        geometry.radius,
+        absoluteAngle
+    );
+
+    fearGreedGaugeElements.pointer.setAttribute('cx', point.x.toFixed(3));
+    fearGreedGaugeElements.pointer.setAttribute('cy', point.y.toFixed(3));
+
+    fearGreedGaugeRenderedValue = safeValue;
+}
+
+function animateFearGreedGauge(targetValue, durationMs = 800) {
+    const safeTarget = clampNumberToRange(Number(targetValue) || 0, 0, 100);
+    const safeDuration = Math.max(120, Number(durationMs) || 800);
+
+    if (fearGreedGaugeAnimationFrame) {
+        cancelAnimationFrame(fearGreedGaugeAnimationFrame);
+        fearGreedGaugeAnimationFrame = null;
+    }
+
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        renderFearGreedGauge(safeTarget);
+        return;
+    }
+
+    const startValue = Number.isFinite(fearGreedGaugeRenderedValue) ? fearGreedGaugeRenderedValue : safeTarget;
+    const startTime = performance.now();
+    const easeOutCubic = (progress) => 1 - Math.pow(1 - progress, 3);
+
+    const step = (now) => {
+        const progress = Math.min(1, (now - startTime) / safeDuration);
+        const easedProgress = easeOutCubic(progress);
+        const nextValue = startValue + ((safeTarget - startValue) * easedProgress);
+        renderFearGreedGauge(nextValue);
+
+        if (progress < 1) {
+            fearGreedGaugeAnimationFrame = requestAnimationFrame(step);
+            return;
+        }
+
+        fearGreedGaugeAnimationFrame = null;
+        renderFearGreedGauge(safeTarget);
+    };
+
+    fearGreedGaugeAnimationFrame = requestAnimationFrame(step);
+}
+
+function parseFearGreedFromCmcPayload(payload) {
+    const text = String(payload || '');
+    if (!text) return null;
+    const altcoinMatch = text.match(/"?altcoinIndex"?\s*:\s*(\d+)/i);
+    const altcoinIndex = altcoinMatch
+        ? clampNumberToRange(Number(altcoinMatch[1]), 0, 100)
+        : null;
+
+    const jsonMatch = text.match(/"fearGreedIndexData":\{"currentIndex":\{"score":\s*(\d+)[^}]*?"name":"([^"]+)"/i);
+    if (jsonMatch) {
+        const value = clampNumberToRange(Number(jsonMatch[1]), 0, 100);
+        const label = normalizeFearGreedLabel(jsonMatch[2]) || getFearGreedLabel(value);
+        return { value, label, altcoinIndex };
+    }
+
+    const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    const title = 'cmc crypto fear and greed index';
+    for (let i = 0; i < lines.length; i++) {
+        if (lines[i].toLowerCase() !== title) continue;
+
+        for (let j = i + 1; j < Math.min(lines.length, i + 24); j++) {
+            if (!/^\d{1,3}$/.test(lines[j])) continue;
+
+            const value = clampNumberToRange(Number(lines[j]), 0, 100);
+            let label = '';
+            for (let k = j + 1; k < Math.min(lines.length, j + 6); k++) {
+                if (/(fear|greed|neutral)/i.test(lines[k])) {
+                    label = normalizeFearGreedLabel(lines[k]);
+                    break;
+                }
+            }
+
+            return {
+                value,
+                label: label || getFearGreedLabel(value),
+                altcoinIndex
+            };
+        }
+    }
+
+    const regexMatch = text.match(/CMC Crypto Fear and Greed Index[\s\S]{0,500}?(\d{1,3})\s+([A-Za-z ]{4,30})\s+Historical Values/i);
+    if (regexMatch) {
+        const value = clampNumberToRange(Number(regexMatch[1]), 0, 100);
+        const label = normalizeFearGreedLabel(regexMatch[2]) || getFearGreedLabel(value);
+        return { value, label, altcoinIndex };
+    }
+
+    if (Number.isFinite(altcoinIndex)) {
+        return {
+            value: null,
+            label: '',
+            altcoinIndex
+        };
+    }
+    return null;
+}
+
+function parseAltcoinIndexFromCmcPayload(payload) {
+    const text = String(payload || '');
+    if (!text) return null;
+
+    const match = text.match(/"?altcoinIndex"?\s*:\s*(\d+)/i);
+    if (!match) return null;
+    return clampNumberToRange(Number(match[1]), 0, 100);
+}
+
+const ALTCOIN_STABLECOIN_SYMBOLS = new Set([
+    'USDT', 'USDC', 'DAI', 'FDUSD', 'TUSD', 'USDE', 'USDD', 'USDP', 'PYUSD', 'GUSD', 'FRAX', 'LUSD', 'USDJ', 'SUSD'
+]);
+
+function isAltcoinSeasonExcludedCoin(coin) {
+    const symbol = String(coin?.symbol || '').toUpperCase();
+    const tags = Array.isArray(coin?.tags)
+        ? coin.tags.map((tag) => String(tag).toLowerCase())
+        : [];
+
+    if (ALTCOIN_STABLECOIN_SYMBOLS.has(symbol)) return true;
+    if (tags.includes('stablecoin')) return true;
+    if (tags.some((tag) => tag.includes('wrapped') || tag.includes('asset-backed'))) return true;
+
+    const wrappedSymbols = new Set(['WBTC', 'WETH', 'STETH', 'WSTETH', 'WEETH', 'CBETH', 'CLINK']);
+    return wrappedSymbols.has(symbol);
+}
+
+function computeAltcoinIndexFromListing(listing) {
+    const list = Array.isArray(listing) ? listing : [];
+    if (list.length === 0) return null;
+
+    const btcCoin = list.find((coin) => String(coin?.symbol || '').toUpperCase() === 'BTC');
+    const btc90d = Number(btcCoin?.quotes?.[0]?.percentChange90d);
+    if (!Number.isFinite(btc90d)) return null;
+
+    // CMC methodology: exclude non-eligible coins first, then take the top 100.
+    const top100 = list
+        .filter((coin) => !isAltcoinSeasonExcludedCoin(coin))
+        .slice(0, 100);
+
+    if (top100.length === 0) return null;
+    const outperformCount = top100.filter((coin) => Number(coin?.quotes?.[0]?.percentChange90d) > btc90d).length;
+    return clampNumberToRange(Math.round((outperformCount / top100.length) * 100), 0, 100);
+}
+
+function extractCmcChangeSeries(listing) {
+    return (Array.isArray(listing) ? listing : [])
+        .map((coin) => Number(coin?.quotes?.[0]?.percentChange24h))
+        .filter((value) => Number.isFinite(value));
+}
+
+async function fetchCmcGlobalMetricsFromProApi(apiKey) {
+    const safeApiKey = String(apiKey || '').trim();
+    if (!safeApiKey) throw new Error('Missing CMC Pro API key');
+
+    const response = await fetch(CMC_PRO_GLOBAL_METRICS_URL, {
+        method: 'GET',
+        headers: {
+            'Accept': 'application/json',
+            'X-CMC_PRO_API_KEY': safeApiKey
+        },
+        signal: AbortSignal.timeout(9000),
+        cache: 'no-store'
+    });
+
+    if (!response.ok) throw new Error(`CMC Pro Global Metrics HTTP ${response.status}`);
+    const json = await response.json();
+    const data = json?.data;
+    const quote = data?.quote?.USD;
+    const marketCap = Number(quote?.total_market_cap);
+    if (!Number.isFinite(marketCap) || marketCap <= 0) {
+        throw new Error('Invalid CMC Pro market cap');
+    }
+
+    return {
+        marketCap,
+        marketCapChange: Number(quote?.total_market_cap_yesterday_percentage_change),
+        btcDominance: Number(data?.btc_dominance)
+    };
+}
+
+async function fetchCmcGlobalMetricsFromPublicApi() {
+    const response = await fetchJsonFromUrls([
+        CMC_GLOBAL_METRICS_URL,
+        buildAllOriginsUrl(CMC_GLOBAL_METRICS_URL)
+    ]);
+
+    const globalData = response?.data;
+    const quote = globalData?.quotes?.[0];
+    const marketCap = Number(quote?.totalMarketCap);
+    if (!Number.isFinite(marketCap) || marketCap <= 0) {
+        throw new Error('Invalid CMC market cap');
+    }
+
+    return {
+        marketCap,
+        marketCapChange: Number(
+            quote?.totalMarketCapYesterdayPercentageChange ??
+            quote?.totalMarketCapChange24h ??
+            globalData?.totalMarketCapYesterdayPercentageChange
+        ),
+        btcDominance: Number(globalData?.btcDominance)
+    };
+}
+
+async function fetchCmcGlobalMetrics() {
+    const apiKey = getCmcProApiKey();
+    if (apiKey) {
+        try {
+            return await fetchCmcGlobalMetricsFromProApi(apiKey);
+        } catch (error) {
+            console.warn('[Market Insights] CMC Pro Global Metrics failed, using CMC public endpoint.', error);
+        }
+    }
+    return fetchCmcGlobalMetricsFromPublicApi();
+}
+
+async function fetchCoinGeckoGlobalMetrics() {
+    const response = await fetchJsonFromUrls([COINGECKO_GLOBAL_URL]);
+    const data = response?.data;
+    const marketCap = Number(data?.total_market_cap?.usd);
+    if (!Number.isFinite(marketCap) || marketCap <= 0) {
+        throw new Error('Invalid CoinGecko market cap');
+    }
+
+    return {
+        marketCap,
+        marketCapChange: Number(data?.market_cap_change_percentage_24h_usd),
+        btcDominance: Number(data?.market_cap_percentage?.btc)
+    };
+}
+
+async function fetchGlobalMetricsWithFallback() {
+    try {
+        const metrics = await fetchCmcGlobalMetrics();
+        return { ...metrics, source: 'cmc' };
+    } catch (primaryError) {
+        console.warn('[Market Insights] CMC Global Metrics unavailable, switching to CoinGecko.', primaryError);
+    }
+
+    const fallbackMetrics = await fetchCoinGeckoGlobalMetrics();
+    return { ...fallbackMetrics, source: 'coingecko' };
+}
+
+async function fetchCmcListing() {
+    const response = await fetchJsonFromUrls([
+        CMC_LISTING_URL,
+        buildAllOriginsUrl(CMC_LISTING_URL)
+    ]);
+    const list = response?.data?.cryptoCurrencyList;
+    if (!Array.isArray(list) || list.length === 0) {
+        throw new Error('Invalid CMC listing data');
+    }
+    return list;
+}
+
+function normalizeCoinGeckoListingItem(item) {
+    return {
+        symbol: String(item?.symbol || '').toUpperCase(),
+        market_cap: Number(item?.market_cap),
+        tags: [],
+        quotes: [{
+            percentChange24h: Number(item?.price_change_percentage_24h_in_currency ?? item?.price_change_percentage_24h),
+            percentChange90d: Number(item?.price_change_percentage_90d_in_currency ?? item?.price_change_percentage_90d)
+        }]
+    };
+}
+
+async function fetchCoinGeckoListing() {
+    const response = await fetchJsonFromUrls([COINGECKO_MARKETS_URL], 9000);
+    if (!Array.isArray(response) || response.length === 0) {
+        throw new Error('Invalid CoinGecko listing data');
+    }
+    return response.map(normalizeCoinGeckoListingItem);
+}
+
+async function fetchListingWithFallback() {
+    try {
+        const listing = await fetchCmcListing();
+        return { listing, source: 'cmc' };
+    } catch (primaryError) {
+        console.warn('[Market Insights] CMC listing unavailable, switching to CoinGecko.', primaryError);
+    }
+
+    const fallbackListing = await fetchCoinGeckoListing();
+    return { listing: fallbackListing, source: 'coingecko' };
+}
+
+async function fetchCmcFearGreedFromProApi(apiKey) {
+    const safeApiKey = String(apiKey || '').trim();
+    if (!safeApiKey) throw new Error('Missing CMC Pro API key');
+
+    const url = `${CMC_PRO_FEAR_GREED_URL}?${new URLSearchParams({ limit: '1' })}`;
+    const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+            'Accept': 'application/json',
+            'X-CMC_PRO_API_KEY': safeApiKey
+        },
+        signal: AbortSignal.timeout(9000),
+        cache: 'no-store'
+    });
+
+    if (!response.ok) throw new Error(`CMC Pro API HTTP ${response.status}`);
+    const json = await response.json();
+    const latest = Array.isArray(json?.data) ? json.data[0] : null;
+    const value = clampNumberToRange(Number(latest?.value), 0, 100);
+    if (!Number.isFinite(value)) throw new Error('Invalid CMC Pro Fear & Greed value');
+
+    const label = normalizeFearGreedLabel(latest?.value_classification) || getFearGreedLabel(value);
+    return { value, label, altcoinIndex: null };
+}
+
+async function fetchCmcFearGreed() {
+    const apiKey = getCmcProApiKey();
+    if (apiKey) {
+        try {
+            return await fetchCmcFearGreedFromProApi(apiKey);
+        } catch (error) {
+            console.warn('[Market Insights] CMC Pro Fear & Greed fetch failed, falling back to public sources.', error);
+        }
+    }
+
+    const payload = await fetchTextFromUrls([
+        buildAllOriginsUrl(CMC_FEAR_GREED_PAGE_URL),
+        buildJinaAiUrl(CMC_FEAR_GREED_PAGE_URL),
+        CMC_FEAR_GREED_PAGE_URL
+    ], 14000);
+
+    const parsed = parseFearGreedFromCmcPayload(payload);
+    if (!parsed || !Number.isFinite(parsed.value)) {
+        if (Number.isFinite(parsed?.altcoinIndex)) return parsed;
+        throw new Error('Invalid CMC Fear & Greed payload');
+    }
+    return parsed;
+}
+
+async function fetchAlternativeFearGreed() {
+    const response = await fetchJsonFromUrls([
+        ALTERNATIVE_FNG_URL,
+        buildAllOriginsUrl(ALTERNATIVE_FNG_URL)
+    ], 12000);
+
+    const latest = Array.isArray(response?.data) ? response.data[0] : null;
+    const value = clampNumberToRange(Number(latest?.value), 0, 100);
+    if (!Number.isFinite(value)) {
+        throw new Error('Invalid Alternative.me Fear & Greed payload');
+    }
+
+    const label = normalizeFearGreedLabel(latest?.value_classification) || getFearGreedLabel(value);
+    return { value, label, altcoinIndex: null };
+}
+
+async function fetchFearGreedWithFallback() {
+    try {
+        const data = await fetchCmcFearGreed();
+        return { ...data, source: 'cmc' };
+    } catch (primaryError) {
+        console.warn('[Market Insights] CMC Fear & Greed unavailable, switching to Alternative.me.', primaryError);
+    }
+
+    const fallbackData = await fetchAlternativeFearGreed();
+    return { ...fallbackData, source: 'alternative' };
+}
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = ALTCOIN_FETCH_TIMEOUT_MS) {
+    const requestOptions = options && typeof options === 'object' ? { ...options } : {};
+    const externalSignal = requestOptions.signal || null;
+    delete requestOptions.signal;
+
+    const controller = new AbortController();
+    let didTimeout = false;
+    const safeTimeout = Math.max(1000, Number(timeoutMs) || ALTCOIN_FETCH_TIMEOUT_MS);
+
+    const relayAbort = () => controller.abort();
+    if (externalSignal) {
+        if (externalSignal.aborted) controller.abort();
+        else externalSignal.addEventListener('abort', relayAbort, { once: true });
+    }
+
+    const timeoutId = setTimeout(() => {
+        didTimeout = true;
+        controller.abort();
+    }, safeTimeout);
+
+    try {
+        return await fetch(url, {
+            ...requestOptions,
+            signal: controller.signal
+        });
+    } catch (error) {
+        if (didTimeout) {
+            const timeoutError = new Error(`[TIMEOUT] ${url}`);
+            timeoutError.code = 'TIMEOUT';
+            throw timeoutError;
+        }
+        throw error;
+    } finally {
+        clearTimeout(timeoutId);
+        if (externalSignal) externalSignal.removeEventListener('abort', relayAbort);
+    }
+}
+
+async function fetchPrimary(signal) {
+    const response = await fetchWithTimeout(CMC_ALTCOIN_PRIMARY_URL, {
+        method: 'GET',
+        signal,
+        cache: 'no-store'
+    }, ALTCOIN_FETCH_TIMEOUT_MS);
+
+    if (!response.ok) {
+        const httpError = new Error(`[PRIMARY] HTTP ${response.status}`);
+        httpError.code = response.status;
+        throw httpError;
+    }
+
+    const json = await response.json();
+    return {
+        altcoinIndex: Number(json?.data?.altcoinIndex?.index),
+        btcDominance: Number(json?.data?.marketDominance?.btcPercentage),
+        source: 'primary'
+    };
+}
+
+async function fetchBackup(signal) {
+    const [globalResponse, listingResponse] = await Promise.all([
+        fetchWithTimeout(COINGECKO_GLOBAL_URL, {
+            method: 'GET',
+            signal,
+            cache: 'no-store'
+        }, ALTCOIN_FETCH_TIMEOUT_MS),
+        fetchWithTimeout(COINGECKO_MARKETS_URL, {
+            method: 'GET',
+            signal,
+            cache: 'no-store'
+        }, ALTCOIN_FETCH_TIMEOUT_MS)
+    ]);
+
+    if (!globalResponse.ok) {
+        throw new Error(`[BACKUP] GLOBAL HTTP ${globalResponse.status}`);
+    }
+    if (!listingResponse.ok) {
+        throw new Error(`[BACKUP] LISTING HTTP ${listingResponse.status}`);
+    }
+
+    const globalJson = await globalResponse.json();
+    const listingJson = await listingResponse.json();
+    const normalizedListing = Array.isArray(listingJson)
+        ? listingJson.map(normalizeCoinGeckoListingItem)
+        : [];
+    const computedAltcoinIndex = computeAltcoinIndexFromListing(normalizedListing);
+
+    return {
+        altcoinIndex: Number(computedAltcoinIndex),
+        btcDominance: Number(globalJson?.data?.market_cap_percentage?.btc),
+        source: 'backup'
+    };
+}
+
+function validateData(payload) {
+    const altcoinIndex = Number(payload?.altcoinIndex);
+    const btcDominance = Number(payload?.btcDominance);
+
+    if (!Number.isFinite(altcoinIndex) || altcoinIndex < 0 || altcoinIndex > 100) return null;
+    if (!Number.isFinite(btcDominance) || btcDominance < 0 || btcDominance > 100) return null;
+
+    return {
+        altcoinIndex: clampNumberToRange(altcoinIndex, 0, 100),
+        btcDominance: clampNumberToRange(btcDominance, 0, 100),
+        source: String(payload?.source || '')
+    };
+}
+
+function updateUI(validatedData, options = {}) {
+    const hasValidData = !!validatedData;
+    const hasError = !!options.error;
+
+    const altcoinScore = hasValidData
+        ? Math.round(validatedData.altcoinIndex)
+        : (Number.isFinite(cmcInsightsState.altcoinIndex) ? Math.round(cmcInsightsState.altcoinIndex) : null);
+    const btcDominance = hasValidData
+        ? validatedData.btcDominance
+        : (Number.isFinite(cmcInsightsState.btcDominance) ? cmcInsightsState.btcDominance : null);
+
+    if (miAltcoinCardEl) {
+        miAltcoinCardEl.classList.remove('is-bitcoin-season', 'is-neutral-season', 'is-altcoin-season');
+        if (Number.isFinite(altcoinScore)) {
+            if (altcoinScore <= 25) miAltcoinCardEl.classList.add('is-bitcoin-season');
+            else if (altcoinScore >= 75) miAltcoinCardEl.classList.add('is-altcoin-season');
+            else miAltcoinCardEl.classList.add('is-neutral-season');
+        }
+    }
+
+    if (miAltcoinValueEl) {
+        miAltcoinValueEl.textContent = Number.isFinite(altcoinScore) ? String(altcoinScore) : '--';
+    }
+
+    if (miAltcoinSubEl) {
+        if (hasError) {
+            miAltcoinSubEl.textContent = 'تعذر جلب البيانات حالياً';
+        } else if (Number.isFinite(btcDominance)) {
+            miAltcoinSubEl.textContent = `BTC.D ${formatNumber(btcDominance, 1)}%`;
+        } else {
+            miAltcoinSubEl.textContent = '--';
+        }
+    }
+
+    if (Number.isFinite(altcoinScore)) {
+        updateScaleMeter(miAltcoinFillEl, miAltcoinThumbEl, altcoinScore);
+    }
+}
+
+async function refreshAltcoinSeasonData() {
+    if (altcoinSeasonState.inFlight) return null;
+
+    if (altcoinSeasonState.controller) {
+        altcoinSeasonState.controller.abort();
+        altcoinSeasonState.controller = null;
+    }
+
+    const controller = new AbortController();
+    altcoinSeasonState.controller = controller;
+    altcoinSeasonState.inFlight = true;
+
+    try {
+        let validatedData = null;
+
+        try {
+            const primaryData = await fetchPrimary(controller.signal);
+            validatedData = validateData(primaryData);
+            if (!validatedData) {
+                throw new Error('[PRIMARY] INVALID_PAYLOAD');
+            }
+            console.log('[Altcoin Season] Primary source success.', validatedData);
+        } catch (primaryError) {
+            if (primaryError?.name === 'AbortError') throw primaryError;
+            console.warn('[Altcoin Season] Primary failed, switching to backup source.', primaryError);
+            const backupData = await fetchBackup(controller.signal);
+            validatedData = validateData(backupData);
+            if (!validatedData) {
+                throw new Error('[BACKUP] INVALID_PAYLOAD');
+            }
+            console.log('[Altcoin Season] Backup source success.', validatedData);
+        }
+
+        cmcInsightsState.altcoinIndex = validatedData.altcoinIndex;
+        cmcInsightsState.btcDominance = validatedData.btcDominance;
+        altcoinSeasonState.hasError = false;
+        updateUI(validatedData, { error: false });
+        return validatedData;
+    } catch (error) {
+        if (error?.name === 'AbortError') return null;
+
+        altcoinSeasonState.hasError = true;
+        console.error('[Altcoin Season] Primary and backup sources failed.', error);
+
+        const cachedData = validateData({
+            altcoinIndex: cmcInsightsState.altcoinIndex,
+            btcDominance: cmcInsightsState.btcDominance
+        });
+        updateUI(cachedData, { error: true });
+        return null;
+    } finally {
+        if (altcoinSeasonState.controller === controller) {
+            altcoinSeasonState.controller = null;
+        }
+        altcoinSeasonState.inFlight = false;
+    }
+}
+
+function bindAltcoinSeasonAbortOnUnload() {
+    if (altcoinSeasonState.unloadHandlerBound) return;
+
+    window.addEventListener('beforeunload', () => {
+        if (altcoinSeasonState.controller) {
+            altcoinSeasonState.controller.abort();
+        }
+    });
+
+    altcoinSeasonState.unloadHandlerBound = true;
+}
+
+function buildTwitterProfileSnapshotUrl(handle) {
+    const normalizedHandle = normalizeTwitterHandle(handle);
+    if (!normalizedHandle) return '';
+    return `${TWITTER_MARKDOWN_FETCH_BASE}${normalizedHandle}`;
+}
+
+function stripMarkdownDecorations(text) {
+    return normalizeWhitespace(
+        String(text || '')
+            .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')
+            .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1')
+            .replace(/[*_`>#]/g, ' ')
+            .replace(/[|]/g, ' ')
+    );
+}
+
+function extractFirstStatusUrl(text) {
+    const match = String(text || '').match(/https:\/\/x\.com\/[A-Za-z0-9_]+\/status\/\d+/i);
+    return match ? match[0] : '';
+}
+
+function extractFirstMediaUrl(text) {
+    const match = String(text || '').match(/https:\/\/pbs\.twimg\.com\/media\/[^)\s]+/i);
+    return match ? match[0] : '';
+}
+
+function findNearestMatch(lines, startIndex, extractor, maxDistance = 12) {
+    const safeLines = Array.isArray(lines) ? lines : [];
+    const extract = typeof extractor === 'function' ? extractor : (() => '');
+    const maxStep = Math.max(0, Number(maxDistance) || 0);
+
+    for (let distance = 0; distance <= maxStep; distance += 1) {
+        const forwardIndex = startIndex + distance;
+        if (forwardIndex >= 0 && forwardIndex < safeLines.length) {
+            const forwardMatch = extract(safeLines[forwardIndex]);
+            if (forwardMatch) return forwardMatch;
+        }
+
+        if (distance === 0) continue;
+        const backwardIndex = startIndex - distance;
+        if (backwardIndex >= 0 && backwardIndex < safeLines.length) {
+            const backwardMatch = extract(safeLines[backwardIndex]);
+            if (backwardMatch) return backwardMatch;
+        }
+    }
+
+    return '';
+}
+
+function getTwitterImpactScore(text) {
+    const normalized = String(text || '').toLowerCase();
+    if (!normalized) return 0;
+
+    const impactKeywords = [
+        'just in', 'breaking', 'sec', 'etf', 'approval', 'reject', 'lawsuit', 'ban', 'hack',
+        'exploit', 'liquidation', 'listing', 'delist', 'bankruptcy', 'acquire', 'acquisition',
+        'blackrock', 'microstrategy', 'coinbase', 'binance', 'bitcoin', 'ethereum', 'stablecoin',
+        'fed', 'fomc', 'treasury', 'whale', 'outflow', 'inflow',
+        'عاجل', 'اختراق', 'موافقة', 'رفض', 'دعوى', 'تصفية', 'إدراج', 'شطب', 'بيتكوين', 'ايثريوم'
+    ];
+    const cryptoKeywords = [
+        'bitcoin', 'btc', 'ethereum', 'eth', 'crypto', 'blockchain', 'defi', 'altcoin', 'web3',
+        'token', 'stablecoin', 'exchange', 'wallet', 'miner', 'mining', 'airdrop',
+        'بيتكوين', 'ايثريوم', 'كريبتو', 'بلوكتشين', 'عملة', 'تداول'
+    ];
+
+    let impactScore = 0;
+    impactKeywords.forEach((keyword) => {
+        if (normalized.includes(keyword)) impactScore += 1;
+    });
+    const cryptoHits = cryptoKeywords.reduce((count, keyword) => count + (normalized.includes(keyword) ? 1 : 0), 0);
+
+    return impactScore + (cryptoHits >= 1 ? 2 : 0);
+}
+
+function isSkippableTwitterLine(text) {
+    const normalized = String(text || '').toLowerCase();
+    if (!normalized) return true;
+    if (normalized === 'pinned') return true;
+    if (normalized.includes('url source:')) return true;
+    if (normalized.includes('markdown content:')) return true;
+    if (normalized.includes('’s posts') || normalized.includes("'s posts")) return true;
+    if (normalized.startsWith('title:')) return true;
+    if (normalized.startsWith('published time:')) return true;
+    if (normalized.startsWith('@')) return true;
+    if (normalized.includes('posts are not financial advice')) return true;
+    if (normalized.includes("we're on telegram")) return true;
+    return false;
+}
+
+function parseTwitterProfileSnapshot(markdownPayload, account, fetchedAt = Date.now()) {
+    const lines = String(markdownPayload || '')
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean);
+
+    if (!lines.length) return [];
+
+    const postsHeaderIndex = lines.findIndex((line) => /(?:’s posts|'s posts)/i.test(line));
+    const startIndex = postsHeaderIndex >= 0 ? postsHeaderIndex + 1 : 0;
+
+    const items = [];
+    const seenStatus = new Set();
+
+    for (let i = startIndex; i < lines.length; i += 1) {
+        const rawLine = lines[i];
+        const cleanedLine = stripMarkdownDecorations(rawLine);
+        if (isSkippableTwitterLine(cleanedLine)) continue;
+        if (cleanedLine.length < 24) continue;
+
+        let statusUrl = findNearestMatch(lines, i, extractFirstStatusUrl, 16);
+        let mediaUrl = findNearestMatch(lines, i, extractFirstMediaUrl, 12);
+        if (!statusUrl || seenStatus.has(statusUrl)) continue;
+
+        const sourceHandle = normalizeTwitterHandle(account?.handle);
+        const title = clampText(cleanedLine, 118);
+        const summary = clampText(cleanedLine, 154);
+        const impactScore = getTwitterImpactScore(`${title} ${summary}`);
+        const sentiment = normalizeNewsSentiment('', title, summary);
+        const sourceWeight = Number(account?.weight) || 1;
+        const importanceScore = (sourceWeight * 10) + (impactScore * 3) + (sentiment === 'positive' ? 1 : 0);
+
+        // Keep only posts that are likely crypto/market-impacting.
+        if (impactScore < 2) continue;
+
+        const fingerprint = `${statusUrl}|${title}`;
+        const item = {
+            id: statusUrl.split('/status/')[1] || fingerprint,
+            fingerprint,
+            title,
+            summary,
+            sourceUrl: statusUrl,
+            sourceName: account?.label || `@${sourceHandle}`,
+            publishedAt: fetchedAt - (items.length * 45_000),
+            imageUrl: mediaUrl || TWITTER_NEWS_IMAGE_FALLBACK,
+            sentiment,
+            importanceScore
+        };
+
+        seenStatus.add(statusUrl);
+        items.push(item);
+        if (items.length >= 10) break;
+    }
+
+    return items;
+}
+
+function getTwitterAccountBatch() {
+    const list = Array.isArray(TWITTER_IMPORTANT_ACCOUNTS) ? TWITTER_IMPORTANT_ACCOUNTS : [];
+    if (!list.length) return [];
+
+    const size = Math.max(1, Math.min(TWITTER_ACCOUNT_BATCH_SIZE, list.length));
+    const batch = [];
+    for (let index = 0; index < size; index += 1) {
+        const offset = (marketNewsState.accountCursor + index) % list.length;
+        batch.push(list[offset]);
+    }
+
+    marketNewsState.accountCursor = (marketNewsState.accountCursor + size) % list.length;
+    return batch;
+}
+
+async function fetchTwitterAccountNews(account) {
+    const profileUrl = buildTwitterProfileSnapshotUrl(account?.handle);
+    if (!profileUrl) throw new Error('TWITTER_ACCOUNT_INVALID');
+
+    const payload = await fetchTextFromUrls([profileUrl], 12000);
+    const parsedItems = parseTwitterProfileSnapshot(payload, account, Date.now());
+    if (!parsedItems.length) throw new Error('TWITTER_ACCOUNT_EMPTY');
+    return parsedItems;
+}
+
+async function fetchLatestTwitterImportantNews() {
+    const accountBatch = getTwitterAccountBatch();
+    if (!accountBatch.length) throw new Error('TWITTER_ACCOUNT_BATCH_EMPTY');
+
+    const results = await Promise.allSettled(
+        accountBatch.map((account) => fetchTwitterAccountNews(account))
+    );
+
+    const merged = [];
+    let lastError = null;
+
+    results.forEach((result) => {
+        if (result.status === 'fulfilled') {
+            merged.push(...result.value);
+            return;
+        }
+        lastError = result.reason || lastError;
+    });
+
+    if (!merged.length) {
+        throw lastError || new Error('TWITTER_NEWS_UNAVAILABLE');
+    }
+
+    merged.sort((a, b) => {
+        const importanceDiff = (Number(b.importanceScore) || 0) - (Number(a.importanceScore) || 0);
+        if (importanceDiff !== 0) return importanceDiff;
+        return (Number(b.publishedAt) || 0) - (Number(a.publishedAt) || 0);
+    });
+
+    const uniqueBest = pickLatestUniqueNews(merged);
+    return uniqueBest || merged[0];
+}
+
+function clearMarketNewsTimer() {
+    if (!marketNewsState.timerId) return;
+    clearTimeout(marketNewsState.timerId);
+    marketNewsState.timerId = null;
+}
+
+function computeNextMarketNewsDelay({ success = false, hasNewItem = false, rateLimited = false } = {}) {
+    const isVisible = document.visibilityState === 'visible';
+    if (rateLimited) return MARKET_NEWS_INTERVAL_RATE_LIMIT_MS;
+
+    if (!success) {
+        const penalty = Math.min(4, Math.max(1, marketNewsState.errorStreak || 1));
+        return Math.min(MARKET_NEWS_INTERVAL_RATE_LIMIT_MS, MARKET_NEWS_INTERVAL_SLOW_MS * penalty);
+    }
+
+    let delay = isVisible ? MARKET_NEWS_INTERVAL_BASE_MS : MARKET_NEWS_INTERVAL_BG_MS;
+    if (hasNewItem) delay = isVisible ? MARKET_NEWS_INTERVAL_MIN_MS : MARKET_NEWS_INTERVAL_BG_MS;
+
+    if (!hasNewItem && marketNewsState.unchangedStreak > 0) {
+        delay += Math.min(5, marketNewsState.unchangedStreak) * 20_000;
+    }
+
+    if (
+        Number.isFinite(marketNewsState.rateLimitRemaining) &&
+        Number.isFinite(marketNewsState.rateLimitResetAt) &&
+        marketNewsState.rateLimitRemaining <= 8 &&
+        marketNewsState.rateLimitResetAt > Date.now()
+    ) {
+        const resetWindowMs = marketNewsState.rateLimitResetAt - Date.now();
+        const spreadDelay = Math.ceil(resetWindowMs / Math.max(1, marketNewsState.rateLimitRemaining));
+        delay = Math.max(delay, spreadDelay);
+    }
+
+    return clampNumberToRange(delay, MARKET_NEWS_INTERVAL_MIN_MS, MARKET_NEWS_INTERVAL_RATE_LIMIT_MS);
+}
+
+function scheduleNextMarketNewsRefresh(options = {}) {
+    clearMarketNewsTimer();
+    const delay = computeNextMarketNewsDelay(options);
+    marketNewsState.timerId = setTimeout(() => {
+        refreshMarketNewsCard();
+    }, delay);
+}
+
+async function refreshMarketNewsCard(force = false) {
+    if (!miNewsCardEl || marketNewsState.inFlight) return;
+
+    if (!force && marketNewsState.lastFetchAt > 0) {
+        const elapsed = Date.now() - marketNewsState.lastFetchAt;
+        if (elapsed < MARKET_NEWS_INTERVAL_MIN_MS) {
+            scheduleNextMarketNewsRefresh({ success: true, hasNewItem: false });
+            return;
+        }
+    }
+
+    marketNewsState.inFlight = true;
+    marketNewsState.lastFetchAt = Date.now();
+
+    let success = false;
+    let hasNewItem = false;
+    let rateLimited = false;
+
+    try {
+        const latestNews = await fetchLatestTwitterImportantNews();
+        if (latestNews) {
+            const fingerprint = latestNews.fingerprint || '';
+            hasNewItem = !!fingerprint && fingerprint !== marketNewsState.currentFingerprint;
+            marketNewsState.latest = latestNews;
+            marketNewsState.currentFingerprint = fingerprint;
+            if (fingerprint) {
+                marketNewsState.seenFingerprints.add(fingerprint);
+                if (marketNewsState.seenFingerprints.size > 220) {
+                    const recent = Array.from(marketNewsState.seenFingerprints).slice(-180);
+                    marketNewsState.seenFingerprints = new Set(recent);
+                }
+            }
+            applyMarketNewsCard(latestNews);
+            persistMarketNewsCache();
+            success = true;
+            marketNewsState.errorStreak = 0;
+            marketNewsState.unchangedStreak = hasNewItem ? 0 : Math.min(12, marketNewsState.unchangedStreak + 1);
+        } else if (!marketNewsState.latest) {
+            applyMarketNewsCard(null);
+            success = true;
+        }
+    } catch (error) {
+        marketNewsState.errorStreak = Math.min(8, marketNewsState.errorStreak + 1);
+        marketNewsState.unchangedStreak = Math.min(12, marketNewsState.unchangedStreak + 1);
+        const message = String(error?.message || '');
+        rateLimited = message.includes('RATE_LIMITED') || message.includes('429');
+
+        if (!marketNewsState.latest) {
+            applyMarketNewsCard(null);
+        } else {
+            applyMarketNewsCard(marketNewsState.latest);
+        }
+    } finally {
+        marketNewsState.inFlight = false;
+        scheduleNextMarketNewsRefresh({ success, hasNewItem, rateLimited });
+    }
+}
+
+function handleMarketNewsVisibilityChange() {
+    if (!miNewsCardEl) return;
+    if (document.visibilityState !== 'visible') return;
+
+    const sinceLastFetch = Date.now() - (marketNewsState.lastFetchAt || 0);
+    if (sinceLastFetch >= MARKET_NEWS_INTERVAL_MIN_MS) {
+        refreshMarketNewsCard(true);
+    }
+}
+
+function initMarketNewsCard() {
+    if (!miNewsCardEl) return;
+    loadNewsTranslatePreference();
+    updateNewsTranslateToggleUi();
+    loadMarketNewsCache();
+
+    if (miNewsTranslateToggleEl && miNewsTranslateToggleEl.dataset.bound !== '1') {
+        miNewsTranslateToggleEl.dataset.bound = '1';
+        miNewsTranslateToggleEl.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            toggleNewsTranslateMode();
+        });
+    }
+
+    if (!marketNewsState.latest) {
+        applyMarketNewsCard(null);
+    } else {
+        applyMarketNewsCard(marketNewsState.latest);
+    }
+
+    if (miNewsImageEl) {
+        miNewsImageEl.addEventListener('error', () => {
+            miNewsImageEl.src = TWITTER_NEWS_IMAGE_FALLBACK;
+        });
+    }
+
+    if (!marketNewsState.visibilityHandlerBound) {
+        document.addEventListener('visibilitychange', handleMarketNewsVisibilityChange);
+        marketNewsState.visibilityHandlerBound = true;
+    }
+
+    refreshMarketNewsCard(true);
+}
+
+function updateMarketInsightsFromTickerData(data) {
+    if (!marketInsightsSectionEl) return;
+    const coins = Array.isArray(data) ? data : latestTickerMarketData;
+    if (!Array.isArray(coins) || coins.length === 0) return;
+
+    latestTickerMarketData = coins;
+    const topCoins = coins.slice(0, 24);
+
+    const changeValues = topCoins
+        .map((coin) => Number(coin?.price_change_percentage_24h))
+        .filter((value) => Number.isFinite(value));
+    const avgChange = changeValues.length
+        ? changeValues.reduce((sum, value) => sum + value, 0) / changeValues.length
+        : 0;
+    const cmcChangeValues = Array.isArray(cmcInsightsState.changeSeries) ? cmcInsightsState.changeSeries : [];
+    const effectiveChangeValues = cmcChangeValues.length >= 6 ? cmcChangeValues : changeValues;
+    const effectiveAvgChange = effectiveChangeValues.length
+        ? effectiveChangeValues.reduce((sum, value) => sum + value, 0) / effectiveChangeValues.length
+        : avgChange;
+    const volatility = effectiveChangeValues.length
+        ? Math.sqrt(effectiveChangeValues.reduce((sum, value) => sum + Math.pow(value - effectiveAvgChange, 2), 0) / effectiveChangeValues.length)
+        : 0;
+
+    const marketCapValues = topCoins
+        .map((coin) => Number(coin?.market_cap))
+        .filter((value) => Number.isFinite(value) && value > 0);
+    const fallbackMarketCap = marketCapValues.length
+        ? marketCapValues.reduce((sum, value) => sum + value, 0)
+        : topCoins.reduce((sum, coin) => sum + Math.abs(Number(coin?.current_price) || 0), 0) * 1_000_000_000;
+    const totalMarketCap = Number.isFinite(cmcInsightsState.marketCap) && cmcInsightsState.marketCap > 0
+        ? cmcInsightsState.marketCap
+        : fallbackMarketCap;
+    const marketCapChange = Number.isFinite(cmcInsightsState.marketCapChange)
+        ? cmcInsightsState.marketCapChange
+        : effectiveAvgChange;
+
+    if (miMarketCapValueEl) {
+        miMarketCapValueEl.textContent = `$${formatCompactUsd(totalMarketCap)}`;
+    }
+    if (miMarketCapChangeEl) {
+        const signedChange = `${marketCapChange >= 0 ? '+' : ''}${formatNumber(marketCapChange, 2)}%`;
+        miMarketCapChangeEl.textContent = signedChange;
+        miMarketCapChangeEl.classList.remove('is-positive', 'is-negative');
+        if (marketCapChange > 0) miMarketCapChangeEl.classList.add('is-positive');
+        else if (marketCapChange < 0) miMarketCapChangeEl.classList.add('is-negative');
+    }
+
+    const sparklineValues = effectiveChangeValues.length >= 8
+        ? effectiveChangeValues.slice(0, 20)
+        : topCoins.map((coin) => Number(coin?.current_price)).filter((value) => Number.isFinite(value)).slice(0, 20);
+    const sparkline = buildMarketSparklinePaths(sparklineValues);
+    if (miMarketCapSparklinePathEl) {
+        miMarketCapSparklinePathEl.setAttribute('d', sparkline.path);
+        miMarketCapSparklinePathEl.style.stroke = marketCapChange >= 0 ? 'var(--positive-color)' : 'var(--negative-color)';
+    }
+    if (miMarketCapSparklineAreaEl) {
+        miMarketCapSparklineAreaEl.setAttribute('d', sparkline.area);
+        // Keep only the stroke trend line; avoid dark fallback fill under chart.
+        miMarketCapSparklineAreaEl.style.fill = 'transparent';
+    }
+
+    const fearGreedValue = Number.isFinite(cmcInsightsState.fearGreed)
+        ? clampNumberToRange(Number(cmcInsightsState.fearGreed), 0, 100)
+        : (Number.isFinite(fearGreedValueCache) ? clampNumberToRange(Number(fearGreedValueCache), 0, 100) : null);
+    if (miFearValueEl) miFearValueEl.textContent = Number.isFinite(fearGreedValue) ? String(fearGreedValue) : '--';
+    if (miFearLabelEl) {
+        miFearLabelEl.textContent = Number.isFinite(fearGreedValue)
+            ? (cmcInsightsState.fearGreedLabel || getFearGreedLabel(fearGreedValue))
+            : 'Source unavailable';
+    }
+    const fearGaugeValue = Number.isFinite(fearGreedValue) ? fearGreedValue : 50;
+    initFearGreedApexChart();
+    animateFearGreedGauge(fearGaugeValue, 800);
+
+    const altcoinUiData = validateData({
+        altcoinIndex: cmcInsightsState.altcoinIndex,
+        btcDominance: cmcInsightsState.btcDominance,
+        source: 'state'
+    });
+    if (altcoinUiData || altcoinSeasonState.hasError) {
+        updateUI(altcoinUiData, { error: altcoinSeasonState.hasError });
+    }
+
+}
+
+async function refreshCmcMarketInsights() {
+    if (!marketInsightsSectionEl || marketInsightsRefreshInFlight) return;
+
+    marketInsightsRefreshInFlight = true;
+    try {
+        const [globalMetricsResult, listingResult, fearGreedResult, altcoinRefreshResult] = await Promise.allSettled([
+            fetchGlobalMetricsWithFallback(),
+            fetchListingWithFallback(),
+            fetchFearGreedWithFallback(),
+            refreshAltcoinSeasonData()
+        ]);
+        const altcoinResult = altcoinRefreshResult.status === 'fulfilled' ? altcoinRefreshResult.value : null;
+
+        if (globalMetricsResult.status === 'fulfilled') {
+            const metrics = globalMetricsResult.value;
+            if (Number.isFinite(metrics.marketCap)) cmcInsightsState.marketCap = metrics.marketCap;
+            if (Number.isFinite(metrics.marketCapChange)) cmcInsightsState.marketCapChange = metrics.marketCapChange;
+            if (Number.isFinite(metrics.btcDominance)) cmcInsightsState.btcDominance = metrics.btcDominance;
+        }
+
+        if (listingResult.status === 'fulfilled') {
+            const resolvedListing = Array.isArray(listingResult.value?.listing) ? listingResult.value.listing : [];
+            cmcInsightsState.changeSeries = extractCmcChangeSeries(resolvedListing);
+        }
+
+        if (fearGreedResult.status === 'fulfilled') {
+            const fearGreedData = fearGreedResult.value;
+            if (Number.isFinite(Number(fearGreedData.value))) {
+                cmcInsightsState.fearGreed = clampNumberToRange(Number(fearGreedData.value), 0, 100);
+                cmcInsightsState.fearGreedLabel = fearGreedData.label || getFearGreedLabel(cmcInsightsState.fearGreed);
+                fearGreedValueCache = cmcInsightsState.fearGreed;
+            }
+        }
+
+        if (!Array.isArray(cmcInsightsState.changeSeries) || cmcInsightsState.changeSeries.length < 4) {
+            cmcInsightsState.changeSeries = [];
+        }
+
+        const hasAltcoinData = !!validateData({
+            altcoinIndex: cmcInsightsState.altcoinIndex,
+            btcDominance: cmcInsightsState.btcDominance
+        });
+        if (
+            globalMetricsResult.status !== 'fulfilled' &&
+            listingResult.status !== 'fulfilled' &&
+            fearGreedResult.status !== 'fulfilled' &&
+            !hasAltcoinData &&
+            !altcoinResult
+        ) {
+            console.warn('[Market Insights] All primary and fallback sources unavailable, using local fallback calculations.');
+        }
+
+        try {
+            localStorage.setItem('smcw_market_insights_cmc', JSON.stringify({
+                version: MARKET_INSIGHTS_CACHE_VERSION,
+                marketCap: cmcInsightsState.marketCap,
+                marketCapChange: cmcInsightsState.marketCapChange,
+                btcDominance: cmcInsightsState.btcDominance,
+                fearGreed: cmcInsightsState.fearGreed,
+                fearGreedLabel: cmcInsightsState.fearGreedLabel,
+                altcoinIndex: cmcInsightsState.altcoinIndex,
+                changeSeries: cmcInsightsState.changeSeries,
+                timestamp: Date.now()
+            }));
+        } catch (e) {
+            console.error(e);
+        } finally {
+            updateMarketInsightsFromTickerData(latestTickerMarketData);
+        }
+    } finally {
+        marketInsightsRefreshInFlight = false;
+    }
+}
+
+function loadMarketInsightsCache() {
+    try {
+        const raw = localStorage.getItem('smcw_market_insights_cmc');
+        if (!raw) return;
+
+        const cached = JSON.parse(raw);
+        if (Number(cached?.version) !== MARKET_INSIGHTS_CACHE_VERSION) return;
+        const isFresh = Number(cached?.timestamp) > (Date.now() - (12 * 60 * 60 * 1000));
+        if (!isFresh) return;
+
+        if (Number.isFinite(Number(cached.marketCap))) cmcInsightsState.marketCap = Number(cached.marketCap);
+        if (Number.isFinite(Number(cached.marketCapChange))) cmcInsightsState.marketCapChange = Number(cached.marketCapChange);
+        if (Number.isFinite(Number(cached.btcDominance))) cmcInsightsState.btcDominance = Number(cached.btcDominance);
+        if (Number.isFinite(Number(cached.altcoinIndex))) {
+            cmcInsightsState.altcoinIndex = clampNumberToRange(Number(cached.altcoinIndex), 0, 100);
+        }
+        if (Number.isFinite(Number(cached.fearGreed))) {
+            cmcInsightsState.fearGreed = clampNumberToRange(Number(cached.fearGreed), 0, 100);
+            fearGreedValueCache = cmcInsightsState.fearGreed;
+        }
+        if (typeof cached.fearGreedLabel === 'string') cmcInsightsState.fearGreedLabel = cached.fearGreedLabel;
+        if (Array.isArray(cached.changeSeries)) {
+            cmcInsightsState.changeSeries = cached.changeSeries
+                .map((value) => Number(value))
+                .filter((value) => Number.isFinite(value));
+        }
+    } catch (e) {
+        console.error(e);
+    }
+}
+
+function openMarketInsightSource(url) {
+    const targetUrl = String(url || '').trim();
+    if (!targetUrl) return;
+    window.open(targetUrl, '_blank', 'noopener,noreferrer');
+}
+
+function initMarketInsightsCardLinks() {
+    if (!marketInsightsSectionEl) return;
+
+    const cardLinks = marketInsightsSectionEl.querySelectorAll('.market-insight-card--link');
+    cardLinks.forEach((card) => {
+        if (!card || card.dataset.insightLinkBound === '1') return;
+        card.dataset.insightLinkBound = '1';
+
+        card.addEventListener('click', (event) => {
+            const target = event.target;
+            if (target && target.closest('a, button, input, select, textarea, [role="button"]')) return;
+            const url = card.dataset.insightUrl || '';
+            openMarketInsightSource(url);
+        });
+
+        card.addEventListener('keydown', (event) => {
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            event.preventDefault();
+            const url = card.dataset.insightUrl || '';
+            openMarketInsightSource(url);
+        });
+    });
+}
+
+function initMarketInsights() {
+    if (!marketInsightsSectionEl) return;
+    initMarketInsightsCardLinks();
+    initMarketNewsCard();
+    bindAltcoinSeasonAbortOnUnload();
+
+    if (miMarketCapValueEl && !miMarketCapValueEl.closest('.market-insight-card--cap')?.dataset.insightUrl) {
+        const marketCapCard = miMarketCapValueEl.closest('.market-insight-card--cap');
+        if (marketCapCard) marketCapCard.dataset.insightUrl = CMC_CHARTS_PAGE_URL;
+    }
+
+    loadMarketInsightsCache();
+    updateMarketInsightsFromTickerData(latestTickerMarketData);
+    refreshCmcMarketInsights();
+
+    if (marketInsightsInterval) clearInterval(marketInsightsInterval);
+    marketInsightsInterval = setInterval(refreshCmcMarketInsights, MARKET_INSIGHTS_REFRESH_MS);
+}
 
 function loadTickerFromCache() {
     const cached = localStorage.getItem(TICKER_CACHE_KEY);
@@ -6708,6 +9109,8 @@ async function fetchCryptoPrices() {
 function renderTicker(data) {
     const tickerContainer = document.getElementById('cryptoTicker');
     if (!tickerContainer) return;
+    latestTickerMarketData = Array.isArray(data) ? data : [];
+    updateMarketInsightsFromTickerData(latestTickerMarketData);
 
 
     if (window.checkAudioAlerts) window.checkAudioAlerts(data);
@@ -6775,6 +9178,7 @@ function renderTicker(data) {
 document.addEventListener('DOMContentLoaded', () => {
 
     const cacheLoaded = loadTickerFromCache();
+    initMarketInsights();
 
     // Load balance state
     loadBalanceState();

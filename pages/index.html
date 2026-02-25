@@ -49,7 +49,7 @@
 
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-    <link rel="stylesheet" href="../assets/css/styles.css">
+    <link rel="stylesheet" href="../assets/css/styles.css?v=43">
 <!-- Tailwind and Flowbite -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.2.1/flowbite.min.css" rel="stylesheet" />
@@ -193,6 +193,97 @@
         </div>
     </div>
 
+    <section class="market-insights-wrap" id="marketInsightsSection" aria-label="Market Insights">
+        <article
+            class="market-insight-card market-insight-card--cap market-insight-card--link"
+            data-insight-url="https://coinmarketcap.com/charts/"
+            tabindex="0"
+            role="link"
+            aria-label="Open Market Cap source on CoinMarketCap">
+            <div class="market-insight-head">Market Cap <i class="fas fa-chevron-right" aria-hidden="true"></i></div>
+            <div class="market-insight-primary">
+                <span class="market-insight-value" id="miMarketCapValue">$--</span>
+                <span class="market-insight-change" id="miMarketCapChange">--</span>
+            </div>
+            <div class="market-insight-sparkline" aria-hidden="true">
+                <svg viewBox="0 0 180 44" preserveAspectRatio="none" focusable="false">
+                    <path id="miMarketCapSparklineArea" class="mi-sparkline-area" d=""></path>
+                    <path id="miMarketCapSparklinePath" class="mi-sparkline-path" d=""></path>
+                </svg>
+            </div>
+        </article>
+
+        <article
+            class="market-insight-card market-insight-card--fear market-insight-card--link"
+            data-insight-url="https://coinmarketcap.com/charts/fear-and-greed-index/"
+            tabindex="0"
+            role="link"
+            aria-label="Open Fear and Greed source on CoinMarketCap">
+            <div class="market-insight-head">Fear &amp; Greed <i class="fas fa-chevron-right" aria-hidden="true"></i></div>
+            <div class="mi-fng-gauge">
+                <div id="miFearChart" class="mi-fng-apex" aria-hidden="true"></div>
+                <div class="mi-fng-center">
+                    <strong id="miFearValue">--</strong>
+                    <span id="miFearLabel">Loading...</span>
+                </div>
+            </div>
+        </article>
+
+        <article
+            class="market-insight-card market-insight-card--alt market-insight-card--link"
+            data-insight-url="https://coinmarketcap.com/charts/altcoin-season-index/"
+            tabindex="0"
+            role="link"
+            aria-label="Open Altcoin Season source on CoinMarketCap">
+            <div class="market-insight-head">Altcoin Season <i class="fas fa-chevron-right" aria-hidden="true"></i></div>
+            <div class="market-insight-primary market-insight-primary--stacked">
+                <span class="market-insight-value"><span id="miAltcoinValue">--</span><em>/100</em></span>
+                <span class="market-insight-sub" id="miAltcoinSub">Bitcoin</span>
+            </div>
+            <div class="mi-scale" aria-hidden="true">
+                <span class="mi-scale-label">Bitcoin</span>
+                <div class="mi-scale-track mi-scale-track--alt">
+                    <span class="mi-scale-fill" id="miAltcoinFill"></span>
+                    <span class="mi-scale-thumb" id="miAltcoinThumb"></span>
+                </div>
+                <span class="mi-scale-label">Altcoin</span>
+            </div>
+        </article>
+
+        <article
+            class="market-insight-card market-insight-card--news market-insight-card--link"
+            data-insight-url="https://x.com/explore"
+            tabindex="0"
+            role="link"
+            aria-label="Open latest crypto news source">
+            <div class="market-insight-head">
+                <span class="mi-news-head-label">Crypto News <i class="fas fa-chevron-right" aria-hidden="true"></i></span>
+                <button
+                    id="miNewsTranslateToggle"
+                    class="mi-news-translate-toggle"
+                    type="button"
+                    aria-pressed="false"
+                    aria-label="تبديل الترجمة">
+                    ترجمة
+                </button>
+            </div>
+            <div class="mi-news-body">
+                <div class="mi-news-thumb-wrap" aria-hidden="true">
+                    <img id="miNewsImage" class="mi-news-thumb" src="../assets/icons/Osoul Pro Dark Mode.png" alt="">
+                </div>
+                <div class="mi-news-content">
+                    <h3 id="miNewsTitle" class="mi-news-title">لا توجد أخبار جديدة حالياً</h3>
+                    <p id="miNewsSummary" class="mi-news-summary">سيتم عرض آخر خبر مهم من حسابات تويتر الموثوقة.</p>
+                    <div class="mi-news-meta">
+                        <span id="miNewsSentiment" class="mi-news-sentiment is-negative">Negative</span>
+                        <span id="miNewsSource" class="mi-news-source">X / Twitter</span>
+                    </div>
+                </div>
+            </div>
+        </article>
+
+    </section>
+
 
 
     <div id="confirm-modal">
@@ -288,7 +379,6 @@
     </div>
 
     <div class="container">
-
         <!-- Financial Overview Dashboard Cards -->
         <section class="section section-financial-overview">
             <div class="financial-cards-grid">
@@ -328,6 +418,42 @@
                             id="resetLossBtn">
                             <i class="fas fa-undo ml-2"></i> إعادة تعيين الخسائر
                         </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="section section-active-trades" id="activeTradesSection" aria-labelledby="activeTradesTitle">
+            <div class="active-trades-header">
+                <h2 class="active-trades-title" id="activeTradesTitle">
+                    <i class="fas fa-bolt" aria-hidden="true"></i>
+                    <span>الصفقات النشطة</span>
+                </h2>
+                <button id="activeTradesToggleBtn" type="button" class="active-trades-toggle-btn"
+                    aria-expanded="true">
+                    إخفاء
+                </button>
+            </div>
+
+            <div id="activeTradesContent" class="active-trades-content" aria-live="polite" aria-hidden="false">
+                <div id="activeTradesCards" class="active-trades-grid"></div>
+
+                <div id="activeTradesEmptyState" class="active-trades-empty" hidden>
+                    <p id="activeTradesEmptyStateMessage" class="active-trades-empty-message">لا توجد صفقات نشطة حالياً
+                    </p>
+                    <div class="active-trades-skeleton-grid" aria-hidden="true">
+                        <span class="active-trades-skeleton-card"></span>
+                        <span class="active-trades-skeleton-card"></span>
+                        <span class="active-trades-skeleton-card"></span>
+                        <span class="active-trades-skeleton-card"></span>
+                        <span class="active-trades-skeleton-card"></span>
+                        <span class="active-trades-skeleton-card"></span>
+                        <span class="active-trades-skeleton-card"></span>
+                        <span class="active-trades-skeleton-card"></span>
+                        <span class="active-trades-skeleton-card"></span>
+                        <span class="active-trades-skeleton-card"></span>
+                        <span class="active-trades-skeleton-card"></span>
+                        <span class="active-trades-skeleton-card"></span>
                     </div>
                 </div>
             </div>
@@ -602,7 +728,7 @@
                         <div class="card-content space-y-6">
                             <!-- Hero Stats -->
                             <div
-                                class="grid grid-cols-3 gap-3 p-4 bg-slate-50 dark:bg-slate-800/40 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-inner">
+                                class="grid grid-cols-3 live-performance-top-grid gap-3 p-4 bg-slate-50 dark:bg-slate-800/40 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-inner">
                                 <div class="text-center">
                                     <div
                                         class="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase mb-1">
@@ -1489,7 +1615,7 @@
     <script src="../ui/tableRenderer.js"></script>
     <script src="../ui/onboardingModal.js"></script>
     <script src="../ui/exchangeSettings.js"></script>
-    <script src="../assets/js/script.js?v=8"></script>
+    <script src="../assets/js/script.js?v=41"></script>
 </body>
 
 </html>
