@@ -71,6 +71,7 @@ http://localhost:8080
 - تحديث رسوم المنصات: عدّل ملف `data/exchanges.spot.js`.
 - تحديث ملاحظات الإصدار المنبثقة: عدّل `update_popup.json`.
 - تحديث كاش PWA: حدّث رقم الإصدار في `service-worker.js` عند كل إصدار جديد.
+- عند كل رفع Frontend: حدّث رقم `v=` لملف `assets/js/script.js` في `pages/index.html` و`service-worker.js` لتفادي تحميل نسخة قديمة من الكاش.
 
 ## المساهمة
 
