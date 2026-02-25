@@ -26,7 +26,7 @@
 1. افتح المجلد:
 
 ```powershell
-cd C:\Users\USER\Desktop\Osoul-Pro
+cd C:\Users\legacy\Desktop\Osoul-Pro
 ```
 
 2. شغّل خادمًا محليًا (أحد الخيارين):
