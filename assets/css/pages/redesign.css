@@ -2087,6 +2087,16 @@ button:disabled {
   gap: var(--rd-space-xs);
 }
 
+/* After moving totals above the main summary table, keep clear visual separation */
+.overall-summary-section > .summary-totals + .summary-table-container {
+  margin-top: var(--rd-space-sm);
+}
+
+/* The summary table is now the last block in this section: remove legacy bottom gap */
+.overall-summary-section > .summary-table-container {
+  margin-bottom: 0 !important;
+}
+
 .summary-totals > div {
   border: 1px solid var(--rd-border);
   border-radius: var(--rd-radius-sm);
@@ -7585,7 +7595,7 @@ html[data-theme="light"] body .app-update-popup__btn--close {
 
 .collapsed-sections-dock {
   margin: 0 auto;
-  padding: 4px 7px;
+  padding: 2px 4px;
   border: 1px solid rgba(96, 165, 250, 0.34);
   border-radius: 999px;
   background-color: rgba(15, 23, 42, 0.72);
@@ -7601,7 +7611,7 @@ html[data-theme="light"] body .app-update-popup__btn--close {
   max-width: 100%;
   justify-self: center;
   align-items: center;
-  gap: 6px;
+  gap: 3px;
   direction: rtl;
 }
 
@@ -7622,7 +7632,7 @@ html[data-theme="light"] body .app-update-popup__btn--close {
   display: inline-flex;
   align-items: center;
   flex-wrap: nowrap;
-  gap: 6px;
+  gap: 3px;
   max-width: 100%;
   overflow-x: auto;
   overflow-y: hidden;
@@ -7639,8 +7649,8 @@ html[data-theme="light"] body .app-update-popup__btn--close {
 }
 
 .collapsed-section-chip {
-  min-height: 30px;
-  padding: 0 10px;
+  min-height: 21px;
+  padding: 0 5px;
   border: 1px solid rgba(148, 163, 184, 0.24);
   border-radius: 999px;
   background: linear-gradient(
@@ -7649,11 +7659,12 @@ html[data-theme="light"] body .app-update-popup__btn--close {
     rgba(15, 23, 42, 0.48)
   );
   color: var(--rd-text-main);
-  font-size: 0.74rem;
+  font-size: 0.58rem;
   font-weight: 700;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 3px;
+  line-height: 1;
   white-space: nowrap;
   cursor: pointer;
   transition:
@@ -7679,6 +7690,60 @@ html[data-theme="light"] body .app-update-popup__btn--close {
 
 .collapsed-section-chip i {
   color: var(--color-val-hex-60a5fa);
+  font-size: 0.72em;
+}
+
+.collapsed-section-chip span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (min-width: 1025px) {
+  .collapsed-sections-dock {
+    display: inline-flex;
+    width: fit-content;
+    max-width: min(100%, 880px);
+    margin-inline: auto;
+    padding: 6px 8px;
+    gap: 8px;
+    border-radius: 16px;
+    justify-content: center;
+    align-items: center;
+  }
+
+  .collapsed-sections-dock__label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--rd-text-main);
+    font-size: 0.8rem;
+    font-weight: 700;
+    opacity: 0.92;
+    white-space: nowrap;
+  }
+
+  .collapsed-sections-dock__items {
+    margin-inline-start: 0;
+    max-width: 100%;
+    gap: 6px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    flex-wrap: nowrap;
+  }
+
+  .collapsed-section-chip {
+    min-height: 27px;
+    padding: 0 9px;
+    font-size: 0.7rem;
+    gap: 5px;
+  }
+
+  .collapsed-section-chip span {
+    max-inline-size: none;
+    overflow: visible;
+    text-overflow: clip;
+  }
 }
 
 #marketInsightsSection.is-docked-collapsed,
@@ -7687,24 +7752,106 @@ html[data-theme="light"] body .app-update-popup__btn--close {
   display: none !important;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 1024px) {
   .collapsed-sections-dock {
+    display: inline-flex;
     width: fit-content;
-    max-width: calc(100% - 2px);
+    max-width: calc(100% - 12px);
     margin-inline: auto;
-    padding: 3px 6px;
+    padding: 4px 5px;
+    gap: 3px;
+    border-radius: 12px;
+    justify-self: center;
+  }
+
+  .collapsed-sections-dock__label {
+    display: inline-flex;
+    align-items: center;
     gap: 5px;
+    color: var(--rd-text-main);
+    font-size: clamp(0.62rem, 1.4vw, 0.78rem);
+    font-weight: 700;
+    opacity: 0.92;
+    white-space: nowrap;
+    flex: 0 0 auto;
   }
 
   .collapsed-sections-dock__items {
     width: auto;
+    display: inline-grid;
+    grid-auto-flow: column;
+    grid-auto-columns: max-content;
+    align-items: center;
+    gap: 3px;
+    overflow: visible;
+    justify-content: center;
+  }
+
+  .collapsed-sections-dock__items::-webkit-scrollbar {
+    display: none;
   }
 
   .collapsed-section-chip {
-    flex: 0 0 auto;
-    min-height: 28px;
-    padding: 0 8px;
-    font-size: 0.72rem;
+    width: auto;
+    min-width: auto;
+    min-height: 25px !important;
+    padding: 0 7px !important;
+    font-size: clamp(0.6rem, 1.6vw, 0.72rem) !important;
+    justify-content: center;
+    white-space: nowrap;
+    overflow: visible;
+    text-overflow: clip;
+    gap: 3px;
+    border-width: 0.8px;
+    border-radius: 10px;
+  }
+
+  .collapsed-section-chip i {
+    font-size: 0.72em;
+  }
+
+  .collapsed-section-chip span {
+    max-inline-size: none;
+    white-space: nowrap;
+    overflow: visible;
+    text-overflow: clip;
+  }
+}
+
+@media (max-width: 430px) {
+  .collapsed-sections-dock {
+    padding: 2px 3px;
+    gap: 2px;
+  }
+
+  .collapsed-sections-dock__label {
+    gap: 4px;
+    font-size: 0.6rem;
+  }
+
+  .collapsed-sections-dock__items {
+    gap: 2px;
+  }
+
+  .collapsed-section-chip {
+    min-height: 23px !important;
+    padding: 0 5px !important;
+    font-size: 0.58rem !important;
+    gap: 2px;
+  }
+}
+
+@media (max-width: 360px) {
+  .collapsed-sections-dock__label {
+    gap: 3px;
+    font-size: 0.56rem;
+  }
+
+  .collapsed-section-chip {
+    min-height: 22px !important;
+    padding: 0 4px !important;
+    font-size: 0.55rem !important;
+    letter-spacing: 0;
   }
 }
 

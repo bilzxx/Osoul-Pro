@@ -49,7 +49,7 @@
 
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-    <link rel="stylesheet" href="../assets/css/styles.css?v=44">
+    <link rel="stylesheet" href="../assets/css/styles.css?v=45">
 <!-- Tailwind and Flowbite -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.2.1/flowbite.min.css" rel="stylesheet" />
@@ -537,6 +537,16 @@
                     </button>
                 </div>
             </div>
+            <div class="summary-totals">
+                <div> <label><i class="fas fa-dollar-sign"></i>إجمالي المبلغ المستثمر</label> <span
+                        id="totalInvestedSummary" class="ltr-text">0.00</span> </div>
+                <div> <label><i class="fas fa-dollar-sign"></i>إجمالي الربح / الخسارة</label> <span
+                        id="totalPnlAmountSummary" class="ltr-text">0.00</span> </div>
+                <div> <label><i class="fas fa-dollar-sign"></i>إجمالي القيمة الحالية</label> <span
+                        id="totalCurrentValueSummary" class="ltr-text">0.00</span> </div>
+                <div> <label><i class="fas fa-percentage"></i>إجمالي الربح / الخسارة</label> <span
+                        id="totalPnlPercentSummary" class="ltr-text">0.00</span> </div>
+            </div>
             <div class="summary-table-container">
                 <table class="summary-table">
                     <thead>
@@ -579,16 +589,6 @@
                         </tr>
                     </tbody>
                 </table>
-            </div>
-            <div class="summary-totals">
-                <div> <label><i class="fas fa-dollar-sign"></i>إجمالي المبلغ المستثمر</label> <span
-                        id="totalInvestedSummary" class="ltr-text">0.00</span> </div>
-                <div> <label><i class="fas fa-dollar-sign"></i>إجمالي الربح / الخسارة</label> <span
-                        id="totalPnlAmountSummary" class="ltr-text">0.00</span> </div>
-                <div> <label><i class="fas fa-dollar-sign"></i>إجمالي القيمة الحالية</label> <span
-                        id="totalCurrentValueSummary" class="ltr-text">0.00</span> </div>
-                <div> <label><i class="fas fa-percentage"></i>إجمالي الربح / الخسارة</label> <span
-                        id="totalPnlPercentSummary" class="ltr-text">0.00</span> </div>
             </div>
         </section>
 

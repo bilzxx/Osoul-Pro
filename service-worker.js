@@ -1,6 +1,6 @@
 'use strict';
 
-const CURRENT_VERSION = '1.0.45';
+const CURRENT_VERSION = '1.0.46';
 const CACHE_PREFIX = 'osoul-';
 const STATIC_CACHE = `${CACHE_PREFIX}static-${CURRENT_VERSION}`;
 const DATA_CACHE = `${CACHE_PREFIX}data-${CURRENT_VERSION}`;
@@ -12,7 +12,7 @@ const STATIC_ASSETS = [
   './manifest.json',
   './remote_version.json',
   './update_popup.json',
-  './assets/css/styles.css?v=44',
+  './assets/css/styles.css?v=45',
   './assets/js/script.js?v=43',
   './data/exchanges.spot.js',
   './services/feeCalculator.js',
