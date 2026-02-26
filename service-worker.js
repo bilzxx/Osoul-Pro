@@ -1,6 +1,6 @@
 'use strict';
 
-const CURRENT_VERSION = '1.0.44';
+const CURRENT_VERSION = '1.0.45';
 const CACHE_PREFIX = 'osoul-';
 const STATIC_CACHE = `${CACHE_PREFIX}static-${CURRENT_VERSION}`;
 const DATA_CACHE = `${CACHE_PREFIX}data-${CURRENT_VERSION}`;
@@ -12,8 +12,8 @@ const STATIC_ASSETS = [
   './manifest.json',
   './remote_version.json',
   './update_popup.json',
-  './assets/css/styles.css?v=43',
-  './assets/js/script.js?v=42',
+  './assets/css/styles.css?v=44',
+  './assets/js/script.js?v=43',
   './data/exchanges.spot.js',
   './services/feeCalculator.js',
   './ui/tableRenderer.js',
@@ -67,10 +67,27 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Keep CSS/JS and local app modules fresh to avoid stale UI after deploys.
+  if (isCoreAppAssetRequest(url)) {
+    event.respondWith(networkFirst(request, STATIC_CACHE));
+    return;
+  }
+
   if (isStaticAssetRequest(request, url)) {
     event.respondWith(cacheFirst(request, STATIC_CACHE));
   }
 });
+
+function isCoreAppAssetRequest(url) {
+  if (url.origin !== self.location.origin) return false;
+  return (
+    url.pathname.includes('/assets/css/') ||
+    url.pathname.includes('/assets/js/') ||
+    url.pathname.includes('/ui/') ||
+    url.pathname.includes('/services/') ||
+    url.pathname.includes('/data/')
+  );
+}
 
 function isStaticAssetRequest(request, url) {
   if (['style', 'script', 'image', 'font', 'worker'].includes(request.destination)) {
