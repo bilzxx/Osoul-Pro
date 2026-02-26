@@ -193,99 +193,6 @@
         </div>
     </div>
 
-    <section class="market-insights-wrap" id="marketInsightsSection" aria-label="Market Insights">
-        <article
-            class="market-insight-card market-insight-card--cap market-insight-card--link"
-            data-insight-url="https://coinmarketcap.com/charts/"
-            tabindex="0"
-            role="link"
-            aria-label="Open Market Cap source on CoinMarketCap">
-            <div class="market-insight-head">Market Cap <i class="fas fa-chevron-right" aria-hidden="true"></i></div>
-            <div class="market-insight-primary">
-                <span class="market-insight-value" id="miMarketCapValue">$--</span>
-                <span class="market-insight-change" id="miMarketCapChange">--</span>
-            </div>
-            <div class="market-insight-sparkline" aria-hidden="true">
-                <svg viewBox="0 0 180 44" preserveAspectRatio="none" focusable="false">
-                    <path id="miMarketCapSparklineArea" class="mi-sparkline-area" d=""></path>
-                    <path id="miMarketCapSparklinePath" class="mi-sparkline-path" d=""></path>
-                </svg>
-            </div>
-        </article>
-
-        <article
-            class="market-insight-card market-insight-card--fear market-insight-card--link"
-            data-insight-url="https://coinmarketcap.com/charts/fear-and-greed-index/"
-            tabindex="0"
-            role="link"
-            aria-label="Open Fear and Greed source on CoinMarketCap">
-            <div class="market-insight-head">Fear &amp; Greed <i class="fas fa-chevron-right" aria-hidden="true"></i></div>
-            <div class="mi-fng-gauge">
-                <div id="miFearChart" class="mi-fng-apex" aria-hidden="true"></div>
-                <div class="mi-fng-center">
-                    <strong id="miFearValue">--</strong>
-                    <span id="miFearLabel">Loading...</span>
-                </div>
-            </div>
-        </article>
-
-        <article
-            class="market-insight-card market-insight-card--alt market-insight-card--link"
-            data-insight-url="https://coinmarketcap.com/charts/altcoin-season-index/"
-            tabindex="0"
-            role="link"
-            aria-label="Open Altcoin Season source on CoinMarketCap">
-            <div class="market-insight-head">Altcoin Season <i class="fas fa-chevron-right" aria-hidden="true"></i></div>
-            <div class="market-insight-primary market-insight-primary--stacked">
-                <span class="market-insight-value"><span id="miAltcoinValue">--</span><em>/100</em></span>
-                <span class="market-insight-sub" id="miAltcoinSub">Bitcoin</span>
-            </div>
-            <div class="mi-scale" aria-hidden="true">
-                <span class="mi-scale-label">Bitcoin</span>
-                <div class="mi-scale-track mi-scale-track--alt">
-                    <span class="mi-scale-fill" id="miAltcoinFill"></span>
-                    <span class="mi-scale-thumb" id="miAltcoinThumb"></span>
-                </div>
-                <span class="mi-scale-label">Altcoin</span>
-            </div>
-        </article>
-
-        <article
-            class="market-insight-card market-insight-card--news market-insight-card--link"
-            data-insight-url="https://x.com/explore"
-            tabindex="0"
-            role="link"
-            aria-label="Open latest crypto news source">
-            <div class="market-insight-head">
-                <span class="mi-news-head-label">Crypto News <i class="fas fa-chevron-right" aria-hidden="true"></i></span>
-                <button
-                    id="miNewsTranslateToggle"
-                    class="mi-news-translate-toggle"
-                    type="button"
-                    aria-pressed="false"
-                    aria-label="تبديل الترجمة">
-                    ترجمة
-                </button>
-            </div>
-            <div class="mi-news-body">
-                <div class="mi-news-thumb-wrap" aria-hidden="true">
-                    <img id="miNewsImage" class="mi-news-thumb" src="../assets/icons/Osoul Pro Dark Mode.png" alt="">
-                </div>
-                <div class="mi-news-content">
-                    <h3 id="miNewsTitle" class="mi-news-title">لا توجد أخبار جديدة حالياً</h3>
-                    <p id="miNewsSummary" class="mi-news-summary">سيتم عرض آخر خبر مهم من حسابات تويتر الموثوقة.</p>
-                    <div class="mi-news-meta">
-                        <span id="miNewsSentiment" class="mi-news-sentiment is-negative">Negative</span>
-                        <span id="miNewsSource" class="mi-news-source">X / Twitter</span>
-                    </div>
-                </div>
-            </div>
-        </article>
-
-    </section>
-
-
-
     <div id="confirm-modal">
         <div class="confirm-dialog">
             <div class="confirm-header">
@@ -379,45 +286,165 @@
     </div>
 
     <div class="container">
+        <aside id="collapsedSectionsDock" class="collapsed-sections-dock" hidden aria-hidden="true"
+            aria-label="الأقسام المخفية">
+            <div class="collapsed-sections-dock__label">
+                <i class="fas fa-layer-group" aria-hidden="true"></i>
+                <span>الأقسام المخفية</span>
+            </div>
+            <div id="collapsedSectionsDockItems" class="collapsed-sections-dock__items"></div>
+        </aside>
+
+        <section class="section section-market-insights market-insights-wrap" id="marketInsightsSection"
+            aria-label="Market Insights">
+            <div class="active-trades-header market-insights-header">
+                <h2 class="active-trades-title market-insights-title" id="marketInsightsTitle">
+                    <i class="fas fa-chart-line" aria-hidden="true"></i>
+                    <span>Market Insights</span>
+                </h2>
+                <button id="marketInsightsToggleBtn" type="button" class="active-trades-toggle-btn"
+                    aria-expanded="true">
+                    إخفاء
+                </button>
+            </div>
+
+            <div id="marketInsightsContent" class="active-trades-content market-insights-content" aria-hidden="false">
+                <div class="market-insights-grid">
+                    <article class="market-insight-card market-insight-card--cap market-insight-card--link"
+                        data-insight-url="https://coinmarketcap.com/charts/" tabindex="0" role="link"
+                        aria-label="Open Market Cap source on CoinMarketCap">
+                        <div class="market-insight-head">Market Cap <i class="fas fa-chevron-right"
+                                aria-hidden="true"></i></div>
+                        <div class="market-insight-primary">
+                            <span class="market-insight-value" id="miMarketCapValue">$--</span>
+                            <span class="market-insight-change" id="miMarketCapChange">--</span>
+                        </div>
+                        <div class="market-insight-sparkline" aria-hidden="true">
+                            <svg viewBox="0 0 180 44" preserveAspectRatio="none" focusable="false">
+                                <path id="miMarketCapSparklineArea" class="mi-sparkline-area" d=""></path>
+                                <path id="miMarketCapSparklinePath" class="mi-sparkline-path" d=""></path>
+                            </svg>
+                        </div>
+                    </article>
+
+                    <article class="market-insight-card market-insight-card--fear market-insight-card--link"
+                        data-insight-url="https://coinmarketcap.com/charts/fear-and-greed-index/" tabindex="0"
+                        role="link" aria-label="Open Fear and Greed source on CoinMarketCap">
+                        <div class="market-insight-head">Fear &amp; Greed <i class="fas fa-chevron-right"
+                                aria-hidden="true"></i></div>
+                        <div class="mi-fng-gauge">
+                            <div id="miFearChart" class="mi-fng-apex" aria-hidden="true"></div>
+                            <div class="mi-fng-center">
+                                <strong id="miFearValue">--</strong>
+                                <span id="miFearLabel">Loading...</span>
+                            </div>
+                        </div>
+                    </article>
+
+                    <article class="market-insight-card market-insight-card--alt market-insight-card--link"
+                        data-insight-url="https://coinmarketcap.com/charts/altcoin-season-index/" tabindex="0"
+                        role="link" aria-label="Open Altcoin Season source on CoinMarketCap">
+                        <div class="market-insight-head">Altcoin Season <i class="fas fa-chevron-right"
+                                aria-hidden="true"></i></div>
+                        <div class="market-insight-primary market-insight-primary--stacked">
+                            <span class="market-insight-value"><span id="miAltcoinValue">--</span><em>/100</em></span>
+                            <span class="market-insight-sub" id="miAltcoinSub">Bitcoin</span>
+                        </div>
+                        <div class="mi-scale" aria-hidden="true">
+                            <span class="mi-scale-label">Bitcoin</span>
+                            <div class="mi-scale-track mi-scale-track--alt">
+                                <span class="mi-scale-fill" id="miAltcoinFill"></span>
+                                <span class="mi-scale-thumb" id="miAltcoinThumb"></span>
+                            </div>
+                            <span class="mi-scale-label">Altcoin</span>
+                        </div>
+                    </article>
+
+                    <article class="market-insight-card market-insight-card--news market-insight-card--link"
+                        data-insight-url="https://x.com/explore" tabindex="0" role="link"
+                        aria-label="Open latest crypto news source">
+                        <div class="market-insight-head">
+                            <span class="mi-news-head-label">Crypto News <i class="fas fa-chevron-right"
+                                    aria-hidden="true"></i></span>
+                            <button id="miNewsTranslateToggle" class="mi-news-translate-toggle" type="button"
+                                aria-pressed="false" aria-label="تبديل الترجمة">
+                                ترجمة
+                            </button>
+                        </div>
+                        <div class="mi-news-body">
+                            <div class="mi-news-thumb-wrap" aria-hidden="true">
+                                <img id="miNewsImage" class="mi-news-thumb"
+                                    src="../assets/icons/Osoul Pro Dark Mode.png" alt="">
+                            </div>
+                            <div class="mi-news-content">
+                                <h3 id="miNewsTitle" class="mi-news-title">لا توجد أخبار جديدة حالياً</h3>
+                                <p id="miNewsSummary" class="mi-news-summary">سيتم عرض آخر خبر مهم من حسابات تويتر
+                                    الموثوقة.</p>
+                                <div class="mi-news-meta">
+                                    <span id="miNewsSentiment" class="mi-news-sentiment is-negative">Negative</span>
+                                    <span id="miNewsSource" class="mi-news-source">X / Twitter</span>
+                                </div>
+                            </div>
+                        </div>
+                    </article>
+                </div>
+            </div>
+        </section>
+
         <!-- Financial Overview Dashboard Cards -->
-        <section class="section section-financial-overview">
-            <div class="financial-cards-grid">
-                <!-- Principal Cash Card -->
-                <div class="financial-card principal-card" onclick="openPrincipalModal()">
-                    <div class="card-content-left">
-                        <div class="card-label">(Principal) رأس المال الأساسي</div>
-                        <div class="card-value" id="principalCashDisplay">0.00 $</div>
-                        <button onclick="event.stopPropagation(); openPrincipalModal()"
-                            class="mt-4 w-full text-white bg-blue-600 hover:bg-blue-700 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-xl text-sm px-5 py-2.5 text-center inline-flex items-center justify-center dark:bg-blue-500 dark:hover:bg-blue-600 dark:focus:ring-blue-800 transition-all"
-                            id="managePrincipalBtn" type="button">
-                            <i class="fas fa-university ml-2"></i> إدارة رأس المال
-                        </button>
-                    </div>
-                </div>
+        <section class="section section-financial-overview" id="financialOverviewSection"
+            aria-labelledby="financialOverviewTitle">
+            <div class="active-trades-header financial-overview-header">
+                <h2 class="active-trades-title financial-overview-title" id="financialOverviewTitle">
+                    <i class="fas fa-wallet" aria-hidden="true"></i>
+                    <span>رأس المال</span>
+                </h2>
+                <button id="financialOverviewToggleBtn" type="button" class="active-trades-toggle-btn"
+                    aria-expanded="true">
+                    إخفاء
+                </button>
+            </div>
 
-                <!-- Profit Wallet Card -->
-                <div class="financial-card profit-card">
-                    <div class="card-content-left">
-                        <div class="card-label">(Profit) الأرباح المحققة</div>
-                        <div class="card-value profit-value" id="profitWalletDisplay">0.00 $</div>
-                        <button onclick="event.stopPropagation(); transferProfitsToCash()"
-                            class="mt-4 w-full text-white bg-emerald-600 hover:bg-emerald-700 focus:ring-4 focus:outline-none focus:ring-emerald-300 font-medium rounded-xl text-sm px-5 py-2.5 text-center inline-flex items-center justify-center dark:bg-emerald-500 dark:hover:bg-emerald-600 dark:focus:ring-emerald-800 transition-all"
-                            id="transferProfitsBtn">
-                            <i class="fas fa-exchange-alt ml-2"></i> نقل الأرباح إلى رأس المال
-                        </button>
+            <div id="financialOverviewContent" class="active-trades-content financial-overview-content"
+                aria-hidden="false">
+                <div class="financial-cards-grid">
+                    <!-- Principal Cash Card -->
+                    <div class="financial-card principal-card" onclick="openPrincipalModal()">
+                        <div class="card-content-left">
+                            <div class="card-label">(Principal) رأس المال الأساسي</div>
+                            <div class="card-value" id="principalCashDisplay">0.00 $</div>
+                            <button onclick="event.stopPropagation(); openPrincipalModal()"
+                                class="mt-4 w-full text-white bg-blue-600 hover:bg-blue-700 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-xl text-sm px-5 py-2.5 text-center inline-flex items-center justify-center dark:bg-blue-500 dark:hover:bg-blue-600 dark:focus:ring-blue-800 transition-all"
+                                id="managePrincipalBtn" type="button">
+                                <i class="fas fa-university ml-2"></i> إدارة رأس المال
+                            </button>
+                        </div>
                     </div>
-                </div>
 
-                <!-- Realized Loss Card -->
-                <div class="financial-card loss-card">
-                    <div class="card-content-left">
-                        <div class="card-label">(Loss) الخسائر المحققة</div>
-                        <div class="card-value loss-value" id="realizedLossDisplay">0.00 $</div>
-                        <button onclick="event.stopPropagation(); resetRealizedLoss()"
-                            class="mt-4 w-full text-white bg-rose-600 hover:bg-rose-700 focus:ring-4 focus:outline-none focus:ring-rose-300 font-medium rounded-xl text-sm px-5 py-2.5 text-center inline-flex items-center justify-center dark:bg-rose-500 dark:hover:bg-rose-600 dark:focus:ring-rose-800 transition-all"
-                            id="resetLossBtn">
-                            <i class="fas fa-undo ml-2"></i> إعادة تعيين الخسائر
-                        </button>
+                    <!-- Profit Wallet Card -->
+                    <div class="financial-card profit-card">
+                        <div class="card-content-left">
+                            <div class="card-label">(Profit) الأرباح المحققة</div>
+                            <div class="card-value profit-value" id="profitWalletDisplay">0.00 $</div>
+                            <button onclick="event.stopPropagation(); transferProfitsToCash()"
+                                class="mt-4 w-full text-white bg-emerald-600 hover:bg-emerald-700 focus:ring-4 focus:outline-none focus:ring-emerald-300 font-medium rounded-xl text-sm px-5 py-2.5 text-center inline-flex items-center justify-center dark:bg-emerald-500 dark:hover:bg-emerald-600 dark:focus:ring-emerald-800 transition-all"
+                                id="transferProfitsBtn">
+                                <i class="fas fa-exchange-alt ml-2"></i> نقل الأرباح إلى رأس المال
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Realized Loss Card -->
+                    <div class="financial-card loss-card">
+                        <div class="card-content-left">
+                            <div class="card-label">(Loss) الخسائر المحققة</div>
+                            <div class="card-value loss-value" id="realizedLossDisplay">0.00 $</div>
+                            <button onclick="event.stopPropagation(); resetRealizedLoss()"
+                                class="mt-4 w-full text-white bg-rose-600 hover:bg-rose-700 focus:ring-4 focus:outline-none focus:ring-rose-300 font-medium rounded-xl text-sm px-5 py-2.5 text-center inline-flex items-center justify-center dark:bg-rose-500 dark:hover:bg-rose-600 dark:focus:ring-rose-800 transition-all"
+                                id="resetLossBtn">
+                                <i class="fas fa-undo ml-2"></i> إعادة تعيين الخسائر
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>

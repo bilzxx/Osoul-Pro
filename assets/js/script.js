@@ -2077,12 +2077,19 @@ const totalInvestedSummaryEl = document.getElementById('totalInvestedSummary');
 const totalPnlAmountSummaryEl = document.getElementById('totalPnlAmountSummary');
 const totalCurrentValueSummaryEl = document.getElementById('totalCurrentValueSummary');
 const totalPnlPercentSummaryEl = document.getElementById('totalPnlPercentSummary');
+const financialOverviewSectionEl = document.getElementById('financialOverviewSection');
+const financialOverviewContentEl = document.getElementById('financialOverviewContent');
+const financialOverviewToggleBtn = document.getElementById('financialOverviewToggleBtn');
 const activeTradesSectionEl = document.getElementById('activeTradesSection');
 const activeTradesContentEl = document.getElementById('activeTradesContent');
 const activeTradesCardsEl = document.getElementById('activeTradesCards');
 const activeTradesEmptyStateEl = document.getElementById('activeTradesEmptyState');
 const activeTradesToggleBtn = document.getElementById('activeTradesToggleBtn');
 const marketInsightsSectionEl = document.getElementById('marketInsightsSection');
+const marketInsightsContentEl = document.getElementById('marketInsightsContent');
+const marketInsightsToggleBtn = document.getElementById('marketInsightsToggleBtn');
+const collapsedSectionsDockEl = document.getElementById('collapsedSectionsDock');
+const collapsedSectionsDockItemsEl = document.getElementById('collapsedSectionsDockItems');
 const miMarketCapValueEl = document.getElementById('miMarketCapValue');
 const miMarketCapChangeEl = document.getElementById('miMarketCapChange');
 const miMarketCapSparklinePathEl = document.getElementById('miMarketCapSparklinePath');
@@ -2115,6 +2122,10 @@ const SUMMARY_TABLE_COLUMN_COUNT = 9;
 let fetchTimeout, autoRefreshIntervalId = null;
 const AUTO_REFRESH_INTERVAL = 30000;
 const PRICE_FETCH_CONCURRENCY = 3;
+const PRICE_OUTLIER_MIN_BASELINE = 1e-12;
+const PRICE_OUTLIER_MAX_RATIO_TRUSTED_SOURCE = 120;
+const PRICE_OUTLIER_MAX_RATIO_FALLBACK_SOURCE = 25;
+const PRICE_OUTLIER_MAX_RATIO_AVG_ENTRY_FALLBACK = 600;
 const LS_KEY_DATA = 'cryptoTrackerUniversal_v9_data';
 const LS_KEY_AUTO_REFRESH = 'cryptoTrackerUniversal_v9_autoRefresh';
 const LS_KEY_HIDE_USDT = 'cryptoTrackerUniversal_v9_hideUsdtSuffix';
@@ -2122,6 +2133,8 @@ const LS_KEY_THEME = 'smcw_theme_preference';
 const LS_KEY_BALANCE_STATE = 'cryptoTrackerUniversal_v9_balanceState';
 const LS_KEY_FINANCIAL_PRIVACY = 'cryptoTrackerUniversal_v9_financialPrivacyMode';
 const LS_KEY_PRICE_CACHE = 'cryptoTrackerUniversal_v9_priceCache';
+const LS_KEY_FINANCIAL_OVERVIEW_COLLAPSED = 'cryptoTrackerUniversal_v9_financialOverviewCollapsed';
+const LS_KEY_MARKET_INSIGHTS_COLLAPSED = 'cryptoTrackerUniversal_v9_marketInsightsCollapsed';
 const LS_KEY_ACTIVE_TRADES_COLLAPSED = 'cryptoTrackerUniversal_v9_activeTradesCollapsed';
 const BRAND_ASSET_BY_THEME = Object.freeze({
     dark: '../assets/icons/Osoul Pro Dark Mode.png',
@@ -2144,6 +2157,10 @@ let isApplyingFinancialPrivacyMask = false;
 let activePriceFetchPromise = null;
 let pendingManualRefreshRequest = false;
 let activeTradesFillersResizeDebounceTimer = null;
+let isFinancialOverviewCollapsed = false;
+let isFinancialOverviewSectionInitialized = false;
+let isMarketInsightsCollapsed = false;
+let isMarketInsightsSectionInitialized = false;
 let isActiveTradesCollapsed = false;
 let isActiveTradesSectionInitialized = false;
 let activeTradesTableHighlightTimer = null;
@@ -4048,6 +4065,100 @@ function restorePricesFromCacheForSymbols(symbols, cacheMap = null) {
     return restoredCount;
 }
 
+function normalizePriceSourceLabel(source) {
+    const normalized = String(source || '').trim().toUpperCase();
+    return normalized || 'UNKNOWN';
+}
+
+function isTrustedPriceSource(source) {
+    const sourceLabel = normalizePriceSourceLabel(source);
+    return sourceLabel === 'BINANCE' || sourceLabel === 'BINANCE_BULK';
+}
+
+function calculateAverageEntryPriceForSymbol(symbol) {
+    const data = allCoinData[symbol];
+    if (!data || typeof data !== 'object') return NaN;
+
+    const initialEntryPrice = Number.parseFloat(data.initialEntryPrice) || 0;
+    const initialAmountDollars = Number.parseFloat(data.initialAmountDollars) || 0;
+    let totalCoinQty = (initialEntryPrice > 0 && initialAmountDollars > 0)
+        ? (initialAmountDollars / initialEntryPrice)
+        : 0;
+    let totalInvestedAmount = (initialEntryPrice > 0 && initialAmountDollars > 0)
+        ? initialAmountDollars
+        : 0;
+
+    if (Array.isArray(data.repurchases)) {
+        data.repurchases.forEach((repurchase) => {
+            const repurchasePrice = Number.parseFloat(repurchase?.price) || 0;
+            const repurchaseAmount = Number.parseFloat(repurchase?.amount) || 0;
+            if (repurchasePrice > 0 && repurchaseAmount > 0) {
+                totalCoinQty += repurchaseAmount / repurchasePrice;
+                totalInvestedAmount += repurchaseAmount;
+            }
+        });
+    }
+
+    if (!(totalCoinQty > 0) || !(totalInvestedAmount > 0)) return NaN;
+    return totalInvestedAmount / totalCoinQty;
+}
+
+function computePriceJumpRatio(candidatePrice, baselinePrice) {
+    const candidate = Number.parseFloat(candidatePrice);
+    const baseline = Number.parseFloat(baselinePrice);
+    if (!Number.isFinite(candidate) || !Number.isFinite(baseline)) return 1;
+    if (!(candidate > 0) || !(baseline > 0)) return 1;
+    return Math.max(candidate / baseline, baseline / candidate);
+}
+
+function validateFetchedPriceCandidate(symbol, candidatePrice, source, cacheMap = null) {
+    const price = Number.parseFloat(candidatePrice);
+    if (!Number.isFinite(price) || !(price > 0)) {
+        return { accepted: false, reason: 'invalid_price', source: normalizePriceSourceLabel(source) };
+    }
+
+    const sourceLabel = normalizePriceSourceLabel(source);
+    const trustedSource = isTrustedPriceSource(sourceLabel);
+    const previousPrice = Number.parseFloat(currentMarketPrices[symbol]);
+    const cachedPrice = Number.parseFloat(cacheMap?.[symbol]);
+    const averageEntryPrice = Number.parseFloat(calculateAverageEntryPriceForSymbol(symbol));
+    const maxRatio = trustedSource
+        ? PRICE_OUTLIER_MAX_RATIO_TRUSTED_SOURCE
+        : PRICE_OUTLIER_MAX_RATIO_FALLBACK_SOURCE;
+    const baselines = [previousPrice, cachedPrice].filter((value) => (
+        Number.isFinite(value) && value > PRICE_OUTLIER_MIN_BASELINE
+    ));
+
+    for (let index = 0; index < baselines.length; index += 1) {
+        const baseline = baselines[index];
+        const ratio = computePriceJumpRatio(price, baseline);
+        if (ratio > maxRatio) {
+            return {
+                accepted: false,
+                reason: 'jump_ratio',
+                ratio,
+                baseline,
+                source: sourceLabel
+            };
+        }
+    }
+
+    if (!trustedSource && Number.isFinite(averageEntryPrice) && averageEntryPrice > PRICE_OUTLIER_MIN_BASELINE) {
+        const avgEntryRatio = computePriceJumpRatio(price, averageEntryPrice);
+        if (avgEntryRatio > PRICE_OUTLIER_MAX_RATIO_AVG_ENTRY_FALLBACK) {
+            return {
+                accepted: false,
+                reason: 'avg_entry_ratio',
+                ratio: avgEntryRatio,
+                baseline: averageEntryPrice,
+                source: sourceLabel
+            };
+        }
+    }
+
+    return { accepted: true, source: sourceLabel };
+}
+
 async function fetchBinanceBulkPrices(symbols) {
     if (!Array.isArray(symbols) || symbols.length === 0) return {};
 
@@ -4316,6 +4427,7 @@ async function fetchAllPrices(isAutoRefresh = false) {
             let successCount = 0;
             let failCount = 0;
             let restoredFromCacheCount = 0;
+            let rejectedOutlierCount = 0;
             const priceCacheMap = readPriceCacheMap();
             const unresolvedSet = new Set();
 
@@ -4324,7 +4436,18 @@ async function fetchAllPrices(isAutoRefresh = false) {
             trackedSymbols.forEach((symbol) => {
                 const bulkPrice = Number.parseFloat(bulkPrices[symbol]);
                 if (Number.isFinite(bulkPrice)) {
-                    currentMarketPrices[symbol] = bulkPrice;
+                    const validation = validateFetchedPriceCandidate(symbol, bulkPrice, 'BINANCE_BULK', priceCacheMap);
+                    if (validation.accepted) {
+                        currentMarketPrices[symbol] = bulkPrice;
+                        return;
+                    }
+
+                    rejectedOutlierCount += 1;
+                    unresolvedSet.add(symbol);
+                    console.warn(
+                        `[PRICE_GUARD] Rejected bulk price for ${symbol} (${bulkPrice}) ` +
+                        `reason=${validation.reason} source=${validation.source}`
+                    );
                 } else {
                     unresolvedSet.add(symbol);
                 }
@@ -4337,8 +4460,28 @@ async function fetchAllPrices(isAutoRefresh = false) {
                         const symbol = payload?.symbol || result.item;
                         const price = Number.parseFloat(payload?.price);
                         if (payload?.error === null && Number.isFinite(price)) {
-                            currentMarketPrices[symbol] = price;
-                            unresolvedSet.delete(symbol);
+                            const validation = validateFetchedPriceCandidate(
+                                symbol,
+                                price,
+                                payload?.source || 'UNKNOWN',
+                                priceCacheMap
+                            );
+
+                            if (validation.accepted) {
+                                currentMarketPrices[symbol] = price;
+                                unresolvedSet.delete(symbol);
+                                return;
+                            }
+
+                            rejectedOutlierCount += 1;
+                            console.warn(
+                                `[PRICE_GUARD] Rejected fallback price for ${symbol} (${price}) ` +
+                                `reason=${validation.reason} source=${validation.source}` +
+                                `${validation.ratio ? ` ratio=${validation.ratio.toFixed(2)}x` : ''}`
+                            );
+                            if (currentMarketPrices[symbol] === undefined) {
+                                currentMarketPrices[symbol] = null;
+                            }
                             return;
                         }
 
@@ -4422,7 +4565,8 @@ async function fetchAllPrices(isAutoRefresh = false) {
 
             const totalCount = trackedSymbols.length;
             const cacheNote = restoredFromCacheCount > 0 ? ` | ${restoredFromCacheCount} من الكاش` : '';
-            const statusMsg = `${successCount}/${totalCount} عملة (${failCount} فشل)${cacheNote}`;
+            const guardNote = rejectedOutlierCount > 0 ? ` | ${rejectedOutlierCount} سعر شاذ` : '';
+            const statusMsg = `${successCount}/${totalCount} عملة (${failCount} فشل)${cacheNote}${guardNote}`;
             apiStatusDiv.innerHTML = isAutoRefresh
                 ? `التحديث التلقائي مفعل: ${statusMsg}`
                 : `<i class="fas fa-circle-check" aria-hidden="true"></i> تم تحديث: ${statusMsg}`;
@@ -4447,6 +4591,10 @@ async function fetchAllPrices(isAutoRefresh = false) {
                     showToast('فشل التحديث الحالي، تم الاحتفاظ بآخر أسعار متاحة.', 'warning', 4200);
                 } else {
                     showToast('فشل تحديث الأسعار حاليًا، حاول مرة أخرى خلال ثوانٍ.', 'error', 5000);
+                }
+
+                if (rejectedOutlierCount > 0) {
+                    showToast(`تم تجاهل ${rejectedOutlierCount} سعر غير منطقي لحماية الحسابات.`, 'info', 4200);
                 }
             }
 
@@ -5006,6 +5154,249 @@ function handleActiveTradeFillersResize() {
     }, 120);
 }
 
+function getCollapsedSectionsDockEntries() {
+    return [
+        {
+            key: 'market-insights',
+            title: 'Market Insights',
+            iconClass: 'fa-chart-line',
+            sectionEl: marketInsightsSectionEl,
+            isCollapsed: isMarketInsightsCollapsed,
+            expand: () => setMarketInsightsCollapsedState(false)
+        },
+        {
+            key: 'financial-overview',
+            title: 'رأس المال',
+            iconClass: 'fa-wallet',
+            sectionEl: financialOverviewSectionEl,
+            isCollapsed: isFinancialOverviewCollapsed,
+            expand: () => setFinancialOverviewCollapsedState(false)
+        },
+        {
+            key: 'active-trades',
+            title: 'الصفقات النشطة',
+            iconClass: 'fa-bolt',
+            sectionEl: activeTradesSectionEl,
+            isCollapsed: isActiveTradesCollapsed,
+            expand: () => setActiveTradesCollapsedState(false)
+        }
+    ];
+}
+
+function buildCollapsedSectionDockChip(entry) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'collapsed-section-chip';
+    button.dataset.sectionKey = entry.key;
+    button.setAttribute('aria-label', `إظهار قسم ${entry.title}`);
+    button.setAttribute('title', `إظهار قسم ${entry.title}`);
+
+    const icon = document.createElement('i');
+    icon.className = `fas ${entry.iconClass}`;
+    icon.setAttribute('aria-hidden', 'true');
+
+    const label = document.createElement('span');
+    label.textContent = entry.title;
+
+    button.appendChild(icon);
+    button.appendChild(label);
+    button.addEventListener('click', () => {
+        entry.expand();
+        requestAnimationFrame(() => {
+            entry.sectionEl?.scrollIntoView({ behavior: 'smooth', block: 'start', inline: 'nearest' });
+        });
+    });
+
+    return button;
+}
+
+function updateCollapsedSectionsDock() {
+    const entries = getCollapsedSectionsDockEntries();
+    const canDock = !!(collapsedSectionsDockEl && collapsedSectionsDockItemsEl);
+    const collapsedEntries = entries.filter((entry) => entry.sectionEl && entry.isCollapsed);
+
+    entries.forEach((entry) => {
+        if (!entry.sectionEl) return;
+        const shouldDock = canDock && entry.isCollapsed;
+        entry.sectionEl.classList.toggle('is-docked-collapsed', shouldDock);
+        entry.sectionEl.dataset.dockedCollapsed = shouldDock ? 'true' : 'false';
+    });
+
+    if (!canDock) return;
+
+    collapsedSectionsDockItemsEl.innerHTML = '';
+    if (collapsedEntries.length === 0) {
+        collapsedSectionsDockEl.hidden = true;
+        collapsedSectionsDockEl.setAttribute('aria-hidden', 'true');
+        return;
+    }
+
+    collapsedEntries.forEach((entry) => {
+        collapsedSectionsDockItemsEl.appendChild(buildCollapsedSectionDockChip(entry));
+    });
+
+    collapsedSectionsDockEl.hidden = false;
+    collapsedSectionsDockEl.setAttribute('aria-hidden', 'false');
+}
+
+function shouldForceImmediateExpandFromDock(collapsed, sectionEl) {
+    return !collapsed && !!sectionEl && sectionEl.classList.contains('is-docked-collapsed');
+}
+
+function updateFinancialOverviewToggleButton() {
+    if (!financialOverviewToggleBtn) return;
+    const buttonLabel = isFinancialOverviewCollapsed ? 'إظهار' : 'إخفاء';
+    financialOverviewToggleBtn.textContent = buttonLabel;
+    financialOverviewToggleBtn.setAttribute('aria-expanded', isFinancialOverviewCollapsed ? 'false' : 'true');
+}
+
+function setFinancialOverviewCollapsedState(collapsed, options = {}) {
+    if (!financialOverviewContentEl) return;
+
+    const { persist = true, immediate = false } = options;
+    isFinancialOverviewCollapsed = !!collapsed;
+    const forceImmediateExpand = shouldForceImmediateExpandFromDock(isFinancialOverviewCollapsed, financialOverviewSectionEl);
+    const shouldRenderImmediate = immediate || forceImmediateExpand;
+    updateFinancialOverviewToggleButton();
+
+    if (persist) {
+        localStorage.setItem(LS_KEY_FINANCIAL_OVERVIEW_COLLAPSED, isFinancialOverviewCollapsed ? 'true' : 'false');
+    }
+
+    if (forceImmediateExpand) {
+        updateCollapsedSectionsDock();
+    }
+
+    if (shouldRenderImmediate) {
+        financialOverviewContentEl.classList.toggle('is-collapsed', isFinancialOverviewCollapsed);
+        financialOverviewContentEl.style.height = isFinancialOverviewCollapsed ? '0px' : 'auto';
+        financialOverviewContentEl.style.opacity = isFinancialOverviewCollapsed ? '0' : '1';
+        financialOverviewContentEl.setAttribute('aria-hidden', isFinancialOverviewCollapsed ? 'true' : 'false');
+        updateCollapsedSectionsDock();
+        return;
+    }
+
+    const currentHeight = Math.max(0, financialOverviewContentEl.getBoundingClientRect().height);
+    const targetHeight = isFinancialOverviewCollapsed ? 0 : Math.max(0, financialOverviewContentEl.scrollHeight);
+
+    financialOverviewContentEl.style.height = `${currentHeight}px`;
+    financialOverviewContentEl.style.opacity = isFinancialOverviewCollapsed ? '1' : '0';
+    financialOverviewContentEl.classList.toggle('is-collapsed', isFinancialOverviewCollapsed);
+    financialOverviewContentEl.setAttribute('aria-hidden', isFinancialOverviewCollapsed ? 'true' : 'false');
+
+    requestAnimationFrame(() => {
+        financialOverviewContentEl.style.height = `${targetHeight}px`;
+        financialOverviewContentEl.style.opacity = isFinancialOverviewCollapsed ? '0' : '1';
+    });
+    updateCollapsedSectionsDock();
+}
+
+function toggleFinancialOverviewVisibility() {
+    setFinancialOverviewCollapsedState(!isFinancialOverviewCollapsed);
+}
+
+function handleFinancialOverviewContentTransitionEnd(event) {
+    if (!financialOverviewContentEl) return;
+    if (event.target !== financialOverviewContentEl || event.propertyName !== 'height') return;
+
+    if (isFinancialOverviewCollapsed) {
+        financialOverviewContentEl.style.height = '0px';
+    } else {
+        financialOverviewContentEl.style.height = 'auto';
+    }
+}
+
+function initFinancialOverviewSection() {
+    if (isFinancialOverviewSectionInitialized) return;
+    if (!financialOverviewSectionEl || !financialOverviewContentEl || !financialOverviewToggleBtn) return;
+
+    const savedState = localStorage.getItem(LS_KEY_FINANCIAL_OVERVIEW_COLLAPSED);
+    isFinancialOverviewCollapsed = savedState === 'true';
+
+    financialOverviewToggleBtn.addEventListener('click', toggleFinancialOverviewVisibility);
+    financialOverviewContentEl.addEventListener('transitionend', handleFinancialOverviewContentTransitionEnd);
+    setFinancialOverviewCollapsedState(isFinancialOverviewCollapsed, { persist: false, immediate: true });
+
+    isFinancialOverviewSectionInitialized = true;
+}
+
+function updateMarketInsightsToggleButton() {
+    if (!marketInsightsToggleBtn) return;
+    const buttonLabel = isMarketInsightsCollapsed ? 'إظهار' : 'إخفاء';
+    marketInsightsToggleBtn.textContent = buttonLabel;
+    marketInsightsToggleBtn.setAttribute('aria-expanded', isMarketInsightsCollapsed ? 'false' : 'true');
+}
+
+function setMarketInsightsCollapsedState(collapsed, options = {}) {
+    if (!marketInsightsContentEl) return;
+
+    const { persist = true, immediate = false } = options;
+    isMarketInsightsCollapsed = !!collapsed;
+    const forceImmediateExpand = shouldForceImmediateExpandFromDock(isMarketInsightsCollapsed, marketInsightsSectionEl);
+    const shouldRenderImmediate = immediate || forceImmediateExpand;
+    updateMarketInsightsToggleButton();
+
+    if (persist) {
+        localStorage.setItem(LS_KEY_MARKET_INSIGHTS_COLLAPSED, isMarketInsightsCollapsed ? 'true' : 'false');
+    }
+
+    if (forceImmediateExpand) {
+        updateCollapsedSectionsDock();
+    }
+
+    if (shouldRenderImmediate) {
+        marketInsightsContentEl.classList.toggle('is-collapsed', isMarketInsightsCollapsed);
+        marketInsightsContentEl.style.height = isMarketInsightsCollapsed ? '0px' : 'auto';
+        marketInsightsContentEl.style.opacity = isMarketInsightsCollapsed ? '0' : '1';
+        marketInsightsContentEl.setAttribute('aria-hidden', isMarketInsightsCollapsed ? 'true' : 'false');
+        updateCollapsedSectionsDock();
+        return;
+    }
+
+    const currentHeight = Math.max(0, marketInsightsContentEl.getBoundingClientRect().height);
+    const targetHeight = isMarketInsightsCollapsed ? 0 : Math.max(0, marketInsightsContentEl.scrollHeight);
+
+    marketInsightsContentEl.style.height = `${currentHeight}px`;
+    marketInsightsContentEl.style.opacity = isMarketInsightsCollapsed ? '1' : '0';
+    marketInsightsContentEl.classList.toggle('is-collapsed', isMarketInsightsCollapsed);
+    marketInsightsContentEl.setAttribute('aria-hidden', isMarketInsightsCollapsed ? 'true' : 'false');
+
+    requestAnimationFrame(() => {
+        marketInsightsContentEl.style.height = `${targetHeight}px`;
+        marketInsightsContentEl.style.opacity = isMarketInsightsCollapsed ? '0' : '1';
+    });
+    updateCollapsedSectionsDock();
+}
+
+function toggleMarketInsightsVisibility() {
+    setMarketInsightsCollapsedState(!isMarketInsightsCollapsed);
+}
+
+function handleMarketInsightsContentTransitionEnd(event) {
+    if (!marketInsightsContentEl) return;
+    if (event.target !== marketInsightsContentEl || event.propertyName !== 'height') return;
+
+    if (isMarketInsightsCollapsed) {
+        marketInsightsContentEl.style.height = '0px';
+    } else {
+        marketInsightsContentEl.style.height = 'auto';
+    }
+}
+
+function initMarketInsightsSection() {
+    if (isMarketInsightsSectionInitialized) return;
+    if (!marketInsightsSectionEl || !marketInsightsContentEl || !marketInsightsToggleBtn) return;
+
+    const savedState = localStorage.getItem(LS_KEY_MARKET_INSIGHTS_COLLAPSED);
+    isMarketInsightsCollapsed = savedState === 'true';
+
+    marketInsightsToggleBtn.addEventListener('click', toggleMarketInsightsVisibility);
+    marketInsightsContentEl.addEventListener('transitionend', handleMarketInsightsContentTransitionEnd);
+    setMarketInsightsCollapsedState(isMarketInsightsCollapsed, { persist: false, immediate: true });
+
+    isMarketInsightsSectionInitialized = true;
+}
+
 function updateActiveTradesToggleButton() {
     if (!activeTradesToggleBtn) return;
     const buttonLabel = isActiveTradesCollapsed ? 'إظهار' : 'إخفاء';
@@ -5018,17 +5409,24 @@ function setActiveTradesCollapsedState(collapsed, options = {}) {
 
     const { persist = true, immediate = false } = options;
     isActiveTradesCollapsed = !!collapsed;
+    const forceImmediateExpand = shouldForceImmediateExpandFromDock(isActiveTradesCollapsed, activeTradesSectionEl);
+    const shouldRenderImmediate = immediate || forceImmediateExpand;
     updateActiveTradesToggleButton();
 
     if (persist) {
         localStorage.setItem(LS_KEY_ACTIVE_TRADES_COLLAPSED, isActiveTradesCollapsed ? 'true' : 'false');
     }
 
-    if (immediate) {
+    if (forceImmediateExpand) {
+        updateCollapsedSectionsDock();
+    }
+
+    if (shouldRenderImmediate) {
         activeTradesContentEl.classList.toggle('is-collapsed', isActiveTradesCollapsed);
         activeTradesContentEl.style.height = isActiveTradesCollapsed ? '0px' : 'auto';
         activeTradesContentEl.style.opacity = isActiveTradesCollapsed ? '0' : '1';
         activeTradesContentEl.setAttribute('aria-hidden', isActiveTradesCollapsed ? 'true' : 'false');
+        updateCollapsedSectionsDock();
         return;
     }
 
@@ -5044,6 +5442,7 @@ function setActiveTradesCollapsedState(collapsed, options = {}) {
         activeTradesContentEl.style.height = `${targetHeight}px`;
         activeTradesContentEl.style.opacity = isActiveTradesCollapsed ? '0' : '1';
     });
+    updateCollapsedSectionsDock();
 }
 
 function toggleActiveTradesVisibility() {
@@ -6159,7 +6558,10 @@ document.addEventListener('DOMContentLoaded', () => {
     loadThemePreference();
     createRepurchaseRows();
     initPriceBadgesWidthSync();
+    initFinancialOverviewSection();
+    initMarketInsightsSection();
     initActiveTradesSection();
+    updateCollapsedSectionsDock();
     loadFinancialPrivacyPreference();
     loadAllDataFromLocalStorage();
     updateCoinSelector();
